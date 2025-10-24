@@ -82,3 +82,33 @@ export const register = async (req, res) => {
     });
   }
 };
+
+/**
+ * ✅ Verify email address
+ */
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ message: "Missing token" });
+
+    // Decode token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findOne({ email: decoded.email });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.verified) return res.status(200).json({ message: "Email already verified" });
+
+    // Mark user as verified
+    user.verified = true;
+    user.verificationToken = null;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified successfully! You can now log in.",
+    });
+  } catch (err) {
+    console.error("❌ Verify Error:", err.message);
+    res.status(400).json({ success: false, message: "Invalid or expired token" });
+  }
+};
