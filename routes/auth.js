@@ -1,9 +1,12 @@
 import express from "express";
-import { register } from "../controllers/authController.js";
+import { register, verifyEmail } from "../controllers/authController.js";
 
 const router = express.Router();
 
-// 🪄 Register route
+// 🪄 Register a new user
 router.post("/register", register);
+
+// ✅ Verify user email
+router.get("/verify/:token", verifyEmail);
 
 export default router;
