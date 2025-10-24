@@ -10,7 +10,7 @@ const app = express();
 // ✅ Allow frontend requests from Netlify
 app.use(
   cors({
-    origin: ["https://nexora-ng.netlify.app", "https://nexora-frontend.netlify.app", "*"],
+    origin: ["https://nexora-n.netlify.app", "https://nexora-frontend.netlify.app", "*"],
     methods: ["GET", "POST"],
     credentials: true,
   })
