@@ -24,9 +24,11 @@ const userSchema = new mongoose.Schema(
     },
     verificationCode: {
       type: String,
+      default: null, // stores the 6-digit code
     },
     codeExpiresAt: {
       type: Date,
+      default: null, // timestamp when code expires
     },
   },
   { timestamps: true }
