@@ -4,13 +4,13 @@ import User from "../models/User.js";
 import nodemailer from "nodemailer";
 
 /**
- * 🪄 Register a new NexOra user
+ * 🪄 Register a new NexOra user (with verification code)
  */
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // 🧠 Check for missing fields
+    // 🧠 Validate fields
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required." });
     }
@@ -23,23 +23,21 @@ export const register = async (req, res) => {
     // 🔐 Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 🎟️ Create verification token
-    const verificationToken = jwt.sign(
-      { email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    // 🔢 Generate 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // 💾 Save user to DB (not yet verified)
+    // 💾 Save new user
     const newUser = new User({
       name,
       email,
       password: hashedPassword,
-      verificationToken,
+      verificationCode,
+      codeExpiresAt,
     });
     await newUser.save();
 
-    // 📧 Setup email transport (Gmail)
+    // 📧 Send email with verification code
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -48,30 +46,23 @@ export const register = async (req, res) => {
       },
     });
 
-    // 🌐 Create frontend verification link
-    const verifyLink = `${process.env.FRONTEND_URL}/verify/${verificationToken}`;
-
-    // 📨 Send email
     await transporter.sendMail({
       to: email,
-      subject: "Verify your NexOra Account",
+      subject: "Your NexOra Verification Code",
       html: `
         <div style="font-family: Arial; line-height: 1.6;">
           <h2>Welcome to NexOra, ${name}!</h2>
-          <p>Click the button below to verify your account:</p>
-          <a href="${verifyLink}" 
-            style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-            Verify Account
-          </a>
-          <p>Or copy this link: <br/> ${verifyLink}</p>
+          <p>Use the verification code below to activate your account:</p>
+          <h1 style="color:#00ff88; letter-spacing:3px;">${verificationCode}</h1>
+          <p>This code will expire in <b>10 minutes</b>.</p>
+          <p>If you didn’t request this, please ignore this email.</p>
         </div>
       `,
     });
 
-    // ✅ Response
     res.status(201).json({
       success: true,
-      message: "Registration successful! Check your email for verification link.",
+      message: "Registration successful! A verification code has been sent to your email.",
     });
   } catch (err) {
     console.error("❌ Register Error:", err.message);
@@ -84,31 +75,40 @@ export const register = async (req, res) => {
 };
 
 /**
- * ✅ Verify email address
+ * ✅ Verify code
  */
-export const verifyEmail = async (req, res) => {
+export const verifyCode = async (req, res) => {
   try {
-    const { token } = req.params;
-    if (!token) return res.status(400).json({ message: "Missing token" });
+    const { email, code } = req.body;
 
-    // Decode token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findOne({ email: decoded.email });
+    if (!email || !code) {
+      return res.status(400).json({ message: "Email and code are required." });
+    }
 
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.verified) return res.status(200).json({ message: "Email already verified" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found." });
 
-    // Mark user as verified
+    if (user.verified) {
+      return res.status(200).json({ message: "User already verified." });
+    }
+
+    // 🔍 Check if code is valid and not expired
+    if (
+      user.verificationCode !== code ||
+      new Date() > user.codeExpiresAt
+    ) {
+      return res.status(400).json({ message: "Invalid or expired code." });
+    }
+
+    // ✅ Mark as verified
     user.verified = true;
-    user.verificationToken = null;
+    user.verificationCode = null;
+    user.codeExpiresAt = null;
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Email verified successfully! You can now log in.",
-    });
+    res.status(200).json({ success: true, message: "Account verified successfully!" });
   } catch (err) {
-    console.error("❌ Verify Error:", err.message);
-    res.status(400).json({ success: false, message: "Invalid or expired token" });
+    console.error("❌ Verification Error:", err.message);
+    res.status(500).json({ success: false, message: "Verification failed." });
   }
 };
