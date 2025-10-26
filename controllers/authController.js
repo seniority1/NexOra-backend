@@ -57,8 +57,9 @@ export const register = async (req, res) => {
 
       console.log("🔑 Resend API Key detected:", process.env.RESEND_API_KEY.slice(0, 8) + "...");
 
+      // ✅ Use verified sender (Resend's test domain)
       const emailPayload = {
-        from: "NexOra <onboarding@nexora.com>",
+        from: "NexOra <onboarding@resend.dev>",
         to: email,
         subject: "Your NexOra Verification Code",
         html: `
