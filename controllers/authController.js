@@ -45,12 +45,12 @@ export const register = async (req, res) => {
       message: "Registration successful! Verification code sent to your email.",
     });
 
-    // 📧 Send email asynchronously with logging
+    // 📧 Send email asynchronously with proper await and logging
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        pass: process.env.EMAIL_PASS, // Gmail App Password
       },
     });
 
@@ -116,7 +116,7 @@ export const verifyCode = async (req, res) => {
     const token = jwt.sign(
       { id: user._id, email: user.email, name: user.name },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" } // token valid for 7 days
+      { expiresIn: "7d" }
     );
 
     res.status(200).json({
