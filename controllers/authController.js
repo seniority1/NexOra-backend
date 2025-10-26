@@ -4,22 +4,21 @@ import User from "../models/User.js";
 import nodemailer from "nodemailer";
 
 /**
- * 🪄 Register a new NexOra user (with verification code)
- */
+ 🪄 Register a new NexOra user (with verification code)
+*/
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
     // 🧠 Validate fields
     if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: "All fields are required." });
+      return res.status(400).json({ message: "All fields are required." });
     }
 
     // 🧩 Check if user already exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: "Email already registered." });
-    }
+    if (existingUser)
+      return res.status(400).json({ message: "Email already registered." });
 
     // 🔐 Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -35,44 +34,40 @@ export const register = async (req, res) => {
       password: hashedPassword,
       verificationCode,
       codeExpiresAt,
-      verified: false,
     });
     await newUser.save();
 
-    // ✅ Respond immediately
+    // ✅ Respond immediately (don’t wait for email)
     res.status(201).json({
       success: true,
-      message: "Registration successful! Verification code sent to your email.",
+      message: "Registration successful! A verification code has been sent to your email.",
     });
 
-    // 📧 Send email asynchronously with proper await and logging
+    // 📧 Send email *after* responding
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // Gmail App Password
+        pass: process.env.EMAIL_PASS,
       },
     });
 
-    try {
-      const info = await transporter.sendMail({
+    transporter
+      .sendMail({
         to: email,
         subject: "Your NexOra Verification Code",
         html: `
           <div style="font-family: Arial; line-height: 1.6;">
             <h2>Welcome to NexOra, ${name}!</h2>
-            <p>Use this verification code to activate your account:</p>
+            <p>Use the verification code below to activate your account:</p>
             <h1 style="color:#00ff88; letter-spacing:3px;">${verificationCode}</h1>
             <p>This code will expire in <b>10 minutes</b>.</p>
-            <p>If you didn’t request this, ignore this email.</p>
+            <p>If you didn’t request this, please ignore this email.</p>
           </div>
         `,
-      });
-      console.log(`✅ Email sent successfully to ${email}: ${info.response}`);
-    } catch (emailErr) {
-      console.error(`❌ Failed to send email to ${email}: ${emailErr.message}`);
-    }
-
+      })
+      .then(() => console.log(`📨 Verification email sent to ${email}`))
+      .catch((err) => console.error("❌ Email send failed:", err.message));
   } catch (err) {
     console.error("❌ Register Error:", err.message);
     res.status(500).json({
@@ -80,58 +75,5 @@ export const register = async (req, res) => {
       message: "Something went wrong during registration.",
       error: err.message,
     });
-  }
-};
-
-/**
- * ✅ Verify code and issue JWT
- */
-export const verifyCode = async (req, res) => {
-  try {
-    const { email, code } = req.body;
-
-    if (!email || !code) {
-      return res.status(400).json({ success: false, message: "Email and code are required." });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: "User not found." });
-
-    if (user.verified) {
-      return res.status(200).json({ success: true, message: "User already verified." });
-    }
-
-    // 🔍 Check if code is valid and not expired
-    if (user.verificationCode !== code || new Date() > user.codeExpiresAt) {
-      return res.status(400).json({ success: false, message: "Invalid or expired code." });
-    }
-
-    // ✅ Mark as verified
-    user.verified = true;
-    user.verificationCode = null;
-    user.codeExpiresAt = null;
-    await user.save();
-
-    // 🔑 Generate JWT token
-    const token = jwt.sign(
-      { id: user._id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Account verified successfully!",
-      token, // send token to frontend
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-    });
-
-  } catch (err) {
-    console.error("❌ Verification Error:", err.message);
-    res.status(500).json({ success: false, message: "Verification failed." });
   }
 };
