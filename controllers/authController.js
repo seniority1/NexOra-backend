@@ -12,13 +12,14 @@ export const register = async (req, res) => {
 
     // 🧠 Validate fields
     if (!name || !email || !password) {
-      return res.status(400).json({ message: "All fields are required." });
+      return res.status(400).json({ success: false, message: "All fields are required." });
     }
 
     // 🧩 Check if user already exists
     const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: "Email already registered." });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: "Email already registered." });
+    }
 
     // 🔐 Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -34,10 +35,17 @@ export const register = async (req, res) => {
       password: hashedPassword,
       verificationCode,
       codeExpiresAt,
+      verified: false,
     });
     await newUser.save();
 
-    // 📧 Send email with verification code
+    // ✅ Respond immediately
+    res.status(201).json({
+      success: true,
+      message: "Registration successful! Verification code sent to your email.",
+    });
+
+    // 📧 Send email asynchronously (won’t block response)
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -46,24 +54,20 @@ export const register = async (req, res) => {
       },
     });
 
-    await transporter.sendMail({
+    transporter.sendMail({
       to: email,
       subject: "Your NexOra Verification Code",
       html: `
         <div style="font-family: Arial; line-height: 1.6;">
           <h2>Welcome to NexOra, ${name}!</h2>
-          <p>Use the verification code below to activate your account:</p>
+          <p>Use this verification code to activate your account:</p>
           <h1 style="color:#00ff88; letter-spacing:3px;">${verificationCode}</h1>
           <p>This code will expire in <b>10 minutes</b>.</p>
-          <p>If you didn’t request this, please ignore this email.</p>
+          <p>If you didn’t request this, ignore this email.</p>
         </div>
       `,
-    });
+    }).catch(err => console.error("❌ Email send failed:", err.message));
 
-    res.status(201).json({
-      success: true,
-      message: "Registration successful! A verification code has been sent to your email.",
-    });
   } catch (err) {
     console.error("❌ Register Error:", err.message);
     res.status(500).json({
@@ -82,22 +86,19 @@ export const verifyCode = async (req, res) => {
     const { email, code } = req.body;
 
     if (!email || !code) {
-      return res.status(400).json({ message: "Email and code are required." });
+      return res.status(400).json({ success: false, message: "Email and code are required." });
     }
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found." });
+    if (!user) return res.status(404).json({ success: false, message: "User not found." });
 
     if (user.verified) {
-      return res.status(200).json({ message: "User already verified." });
+      return res.status(200).json({ success: true, message: "User already verified." });
     }
 
     // 🔍 Check if code is valid and not expired
-    if (
-      user.verificationCode !== code ||
-      new Date() > user.codeExpiresAt
-    ) {
-      return res.status(400).json({ message: "Invalid or expired code." });
+    if (user.verificationCode !== code || new Date() > user.codeExpiresAt) {
+      return res.status(400).json({ success: false, message: "Invalid or expired code." });
     }
 
     // ✅ Mark as verified
