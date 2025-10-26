@@ -45,7 +45,7 @@ export const register = async (req, res) => {
       message: "Registration successful! Verification code sent to your email.",
     });
 
-    // 📧 Send email asynchronously (won’t block response)
+    // 📧 Send email asynchronously with logging
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -54,19 +54,24 @@ export const register = async (req, res) => {
       },
     });
 
-    transporter.sendMail({
-      to: email,
-      subject: "Your NexOra Verification Code",
-      html: `
-        <div style="font-family: Arial; line-height: 1.6;">
-          <h2>Welcome to NexOra, ${name}!</h2>
-          <p>Use this verification code to activate your account:</p>
-          <h1 style="color:#00ff88; letter-spacing:3px;">${verificationCode}</h1>
-          <p>This code will expire in <b>10 minutes</b>.</p>
-          <p>If you didn’t request this, ignore this email.</p>
-        </div>
-      `,
-    }).catch(err => console.error("❌ Email send failed:", err.message));
+    try {
+      const info = await transporter.sendMail({
+        to: email,
+        subject: "Your NexOra Verification Code",
+        html: `
+          <div style="font-family: Arial; line-height: 1.6;">
+            <h2>Welcome to NexOra, ${name}!</h2>
+            <p>Use this verification code to activate your account:</p>
+            <h1 style="color:#00ff88; letter-spacing:3px;">${verificationCode}</h1>
+            <p>This code will expire in <b>10 minutes</b>.</p>
+            <p>If you didn’t request this, ignore this email.</p>
+          </div>
+        `,
+      });
+      console.log(`✅ Email sent successfully to ${email}: ${info.response}`);
+    } catch (emailErr) {
+      console.error(`❌ Failed to send email to ${email}: ${emailErr.message}`);
+    }
 
   } catch (err) {
     console.error("❌ Register Error:", err.message);
@@ -79,7 +84,7 @@ export const register = async (req, res) => {
 };
 
 /**
- * ✅ Verify code
+ * ✅ Verify code and issue JWT
  */
 export const verifyCode = async (req, res) => {
   try {
@@ -107,7 +112,24 @@ export const verifyCode = async (req, res) => {
     user.codeExpiresAt = null;
     await user.save();
 
-    res.status(200).json({ success: true, message: "Account verified successfully!" });
+    // 🔑 Generate JWT token
+    const token = jwt.sign(
+      { id: user._id, email: user.email, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" } // token valid for 7 days
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Account verified successfully!",
+      token, // send token to frontend
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+
   } catch (err) {
     console.error("❌ Verification Error:", err.message);
     res.status(500).json({ success: false, message: "Verification failed." });
