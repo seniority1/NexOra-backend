@@ -4,8 +4,8 @@ import User from "../models/User.js";
 import nodemailer from "nodemailer";
 
 /**
- 🪄 Register a new NexOra user (with verification code)
-*/
+ * 🪄 Register a new NexOra user (with verification code)
+ */
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -37,7 +37,7 @@ export const register = async (req, res) => {
     });
     await newUser.save();
 
-    // ✅ Respond immediately (don’t wait for email)
+    // ✅ Respond immediately
     res.status(201).json({
       success: true,
       message: "Registration successful! A verification code has been sent to your email.",
@@ -75,5 +75,41 @@ export const register = async (req, res) => {
       message: "Something went wrong during registration.",
       error: err.message,
     });
+  }
+};
+
+/**
+ * ✅ Verify user code
+ */
+export const verifyCode = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ message: "Email and code are required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    if (user.verified) {
+      return res.status(200).json({ success: true, message: "User already verified." });
+    }
+
+    // 🔍 Check code validity
+    if (user.verificationCode !== code || new Date() > user.codeExpiresAt) {
+      return res.status(400).json({ message: "Invalid or expired code." });
+    }
+
+    // ✅ Mark verified
+    user.verified = true;
+    user.verificationCode = null;
+    user.codeExpiresAt = null;
+    await user.save();
+
+    res.status(200).json({ success: true, message: "Account verified successfully!" });
+  } catch (err) {
+    console.error("❌ Verification Error:", err.message);
+    res.status(500).json({ success: false, message: "Verification failed." });
   }
 };
