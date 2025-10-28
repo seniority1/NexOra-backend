@@ -1,5 +1,9 @@
 import express from "express";
-import { register, verifyCode } from "../controllers/authController.js";
+import {
+  register,
+  verifyCode,
+  resendVerificationCode, // ✅ added new controller
+} from "../controllers/authController.js";
 
 const router = express.Router();
 
@@ -8,5 +12,8 @@ router.post("/register", register);
 
 // ✅ Verify user with code
 router.post("/verify-code", verifyCode);
+
+// 🔁 Resend verification code
+router.post("/resend-code", resendVerificationCode);
 
 export default router;
