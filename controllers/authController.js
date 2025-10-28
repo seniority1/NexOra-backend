@@ -57,7 +57,6 @@ export const register = async (req, res) => {
 
       console.log("🔑 Resend API Key detected:", process.env.RESEND_API_KEY.slice(0, 8) + "...");
 
-      // ✅ Updated sender to use onboarding@resend.dev
       const emailPayload = {
         from: "NexOra <onboarding@resend.dev>",
         to: email,
@@ -154,6 +153,74 @@ export const verifyCode = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Verification failed.",
+      error: err.message,
+    });
+  }
+};
+
+/**
+ * 🔁 Resend verification code
+ */
+export const resendVerificationCode = async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("\n🟡 [RESEND VERIFICATION CODE]");
+    console.log("Email:", email);
+
+    if (!email) {
+      console.log("❌ Missing email in request");
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("❌ User not found for:", email);
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (user.verified) {
+      console.log("⚠️ User already verified:", email);
+      return res.status(400).json({ message: "User already verified." });
+    }
+
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const newExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.verificationCode = newCode;
+    user.codeExpiresAt = newExpiry;
+    await user.save();
+
+    console.log("📨 Sending new verification code:", newCode);
+
+    const emailPayload = {
+      from: "NexOra <onboarding@resend.dev>",
+      to: email,
+      subject: "Your New NexOra Verification Code",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2>Hello again!</h2>
+          <p>Here’s your new NexOra verification code:</p>
+          <h1 style="color:#00ff88; letter-spacing:3px;">${newCode}</h1>
+          <p>This code will expire in <b>10 minutes</b>.</p>
+        </div>
+      `,
+    };
+
+    const result = await resend.emails.send(emailPayload);
+
+    console.log("✅ Resend email result:", result);
+    console.log(`📨 New verification email successfully sent to ${email}`);
+
+    res.status(200).json({
+      success: true,
+      message: "New verification code sent successfully!",
+    });
+  } catch (err) {
+    console.error("❌ Resend Verification Error:", err.message);
+    console.error(err.stack);
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend verification code.",
       error: err.message,
     });
   }
