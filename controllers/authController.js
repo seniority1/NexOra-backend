@@ -287,3 +287,118 @@ export const login = async (req, res) => {
     });
   }
 };
+
+/** 
+ * 🔑 Forgot Password — Send reset code via email 
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("\n🟡 [FORGOT PASSWORD]");
+    console.log("Email:", email);
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("❌ No user found for:", email);
+      return res.status(404).json({ message: "No account found with this email." });
+    }
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const resetExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+
+    user.resetCode = resetCode;
+    user.resetExpiresAt = resetExpiresAt;
+    await user.save();
+
+    console.log("📨 Sending password reset code:", resetCode);
+
+    // Email send block
+    try {
+      const emailPayload = {
+        from: "NexOra <onboarding@resend.dev>",
+        to: email,
+        subject: "Your NexOra Password Reset Code",
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2>Password Reset Request</h2>
+            <p>Use this code to reset your NexOra password:</p>
+            <h1 style="color:#00ff88; letter-spacing:3px;">${resetCode}</h1>
+            <p>This code will expire in <b>10 minutes</b>.</p>
+            <p>If you didn’t request this, you can ignore this email.</p>
+          </div>
+        `,
+      };
+
+      const result = await resend.emails.send(emailPayload);
+      console.log("✅ Reset email sent:", result);
+    } catch (emailErr) {
+      console.error("❌ Reset email failed:", emailErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset code sent to your email.",
+    });
+  } catch (err) {
+    console.error("❌ Forgot Password Error:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while sending reset code.",
+      error: err.message,
+    });
+  }
+};
+
+
+/** 
+ * 🔒 Reset Password — Verify code and set new password 
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    console.log("\n🟢 [RESET PASSWORD]");
+    console.log("Email:", email);
+
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("❌ No user found for:", email);
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (user.resetCode !== code) {
+      return res.status(400).json({ message: "Invalid reset code." });
+    }
+
+    if (new Date() > user.resetExpiresAt) {
+      return res.status(400).json({ message: "Reset code expired." });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.resetCode = null;
+    user.resetExpiresAt = null;
+    await user.save();
+
+    console.log("✅ Password reset successful for:", email);
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful! You can now log in.",
+    });
+  } catch (err) {
+    console.error("❌ Reset Password Error:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to reset password.",
+      error: err.message,
+    });
+  }
+};
