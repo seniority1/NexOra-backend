@@ -229,3 +229,61 @@ export const resendVerificationCode = async (req, res) => {
     });
   }
 };
+
+/**
+ * 🔐 Login user (only after verification)
+ */
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    console.log("\n🟢 [LOGIN ATTEMPT]");
+    console.log("Email:", email);
+
+    if (!email || !password) {
+      console.log("❌ Missing email or password");
+      return res.status(400).json({ message: "Email and password are required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("❌ No user found for:", email);
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    // Check if verified
+    if (!user.verified) {
+      console.log("⚠️ User not verified:", email);
+      return res.status(403).json({
+        message: "Account not verified. Please check your email for the code.",
+      });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      console.log("❌ Invalid password for:", email);
+      return res.status(400).json({ message: "Invalid credentials." });
+    }
+
+    console.log("✅ Login successful for:", email);
+
+    // For now we’ll just return success (no JWT yet)
+    res.status(200).json({
+      success: true,
+      message: "Login successful!",
+      user: {
+        name: user.name,
+        email: user.email,
+        verified: user.verified,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Login Error:", err.message);
+    console.error(err.stack);
+    res.status(500).json({
+      success: false,
+      message: "Login failed.",
+      error: err.message,
+    });
+  }
+};
