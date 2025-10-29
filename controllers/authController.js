@@ -41,9 +41,9 @@ export const register = async (req, res) => {
     await newUser.save();
 
     console.log("✅ User saved successfully:", newUser._id);
-    console.log("📨 Preparing to send email...");
+    console.log("📨 Preparing to send verification email...");
 
-    // EMAIL SENDING BLOCK
+    // EMAIL SENDING
     try {
       if (!process.env.RESEND_API_KEY) {
         console.error("🚨 Missing RESEND_API_KEY in environment variables!");
@@ -74,17 +74,11 @@ export const register = async (req, res) => {
       });
 
       const result = await resend.emails.send(emailPayload);
-
       console.log("✅ Email send response:", result);
       console.log(`📨 Verification email successfully sent to ${email}`);
     } catch (emailErr) {
       console.error("❌ Email send failed!");
-      console.error("Error Name:", emailErr.name);
-      console.error("Error Message:", emailErr.message);
-      console.error("Error Stack:", emailErr.stack);
-      if (emailErr.response) {
-        console.error("Resend API Response:", JSON.stringify(emailErr.response, null, 2));
-      }
+      console.error("Error:", emailErr);
     }
 
     res.status(201).json({
@@ -192,28 +186,23 @@ export const resendVerificationCode = async (req, res) => {
 
     console.log("📨 Sending new verification code:", newCode);
 
-    try {
-      const emailPayload = {
-        from: "NexOra <onboarding@resend.dev>",
-        to: email,
-        subject: "Your New NexOra Verification Code",
-        html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h2>Hello again!</h2>
-            <p>Here’s your new NexOra verification code:</p>
-            <h1 style="color:#00ff88; letter-spacing:3px;">${newCode}</h1>
-            <p>This code will expire in <b>10 minutes</b>.</p>
-          </div>
-        `,
-      };
+    const emailPayload = {
+      from: "NexOra <onboarding@resend.dev>",
+      to: email,
+      subject: "Your New NexOra Verification Code",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2>Hello again!</h2>
+          <p>Here’s your new NexOra verification code:</p>
+          <h1 style="color:#00ff88; letter-spacing:3px;">${newCode}</h1>
+          <p>This code will expire in <b>10 minutes</b>.</p>
+        </div>
+      `,
+    };
 
-      const result = await resend.emails.send(emailPayload);
-      console.log("✅ Resend email result:", result);
-      console.log(`📨 New verification email successfully sent to ${email}`);
-    } catch (emailErr) {
-      console.error("❌ Resend email failed!");
-      console.error(emailErr);
-    }
+    const result = await resend.emails.send(emailPayload);
+    console.log("✅ Resend email result:", result);
+    console.log(`📨 New verification email successfully sent to ${email}`);
 
     res.status(200).json({
       success: true,
@@ -250,7 +239,6 @@ export const login = async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // Check if verified
     if (!user.verified) {
       console.log("⚠️ User not verified:", email);
       return res.status(403).json({
@@ -258,7 +246,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       console.log("❌ Invalid password for:", email);
@@ -267,7 +254,6 @@ export const login = async (req, res) => {
 
     console.log("✅ Login successful for:", email);
 
-    // For now we’ll just return success (no JWT yet)
     res.status(200).json({
       success: true,
       message: "Login successful!",
@@ -288,8 +274,8 @@ export const login = async (req, res) => {
   }
 };
 
-/** 
- * 🔑 Forgot Password — Send reset code via email 
+/**
+ * 🔑 Forgot Password — Send reset code via email
  */
 export const forgotPassword = async (req, res) => {
   try {
@@ -308,7 +294,7 @@ export const forgotPassword = async (req, res) => {
     }
 
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const resetExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+    const resetExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     user.resetCode = resetCode;
     user.resetExpiresAt = resetExpiresAt;
@@ -316,28 +302,23 @@ export const forgotPassword = async (req, res) => {
 
     console.log("📨 Sending password reset code:", resetCode);
 
-    // Email send block
-    try {
-      const emailPayload = {
-        from: "NexOra <onboarding@resend.dev>",
-        to: email,
-        subject: "Your NexOra Password Reset Code",
-        html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h2>Password Reset Request</h2>
-            <p>Use this code to reset your NexOra password:</p>
-            <h1 style="color:#00ff88; letter-spacing:3px;">${resetCode}</h1>
-            <p>This code will expire in <b>10 minutes</b>.</p>
-            <p>If you didn’t request this, you can ignore this email.</p>
-          </div>
-        `,
-      };
+    const emailPayload = {
+      from: "NexOra <onboarding@resend.dev>",
+      to: email,
+      subject: "Your NexOra Password Reset Code",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2>Password Reset Request</h2>
+          <p>Use this code to reset your NexOra password:</p>
+          <h1 style="color:#00ff88; letter-spacing:3px;">${resetCode}</h1>
+          <p>This code will expire in <b>10 minutes</b>.</p>
+          <p>If you didn’t request this, you can ignore this email.</p>
+        </div>
+      `,
+    };
 
-      const result = await resend.emails.send(emailPayload);
-      console.log("✅ Reset email sent:", result);
-    } catch (emailErr) {
-      console.error("❌ Reset email failed:", emailErr);
-    }
+    const result = await resend.emails.send(emailPayload);
+    console.log("✅ Reset email sent:", result);
 
     res.status(200).json({
       success: true,
@@ -353,9 +334,8 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-
-/** 
- * 🔒 Reset Password — Verify code and set new password 
+/**
+ * 🔒 Reset Password — Verify code and set new password
  */
 export const resetPassword = async (req, res) => {
   try {
@@ -373,12 +353,14 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    if (user.resetCode !== code) {
-      return res.status(400).json({ message: "Invalid reset code." });
-    }
-
-    if (new Date() > user.resetExpiresAt) {
-      return res.status(400).json({ message: "Reset code expired." });
+    if (
+      !user.resetCode ||
+      user.resetCode !== code ||
+      !user.resetExpiresAt ||
+      new Date() > user.resetExpiresAt
+    ) {
+      console.log("❌ Invalid or expired reset code for:", email);
+      return res.status(400).json({ message: "Invalid or expired reset code." });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
