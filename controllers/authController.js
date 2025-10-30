@@ -44,7 +44,39 @@ export const register = async (req, res) => {
 
     await sendEmail({
       to: email,
-      subject: "Your NexOra Verification Code",
+      subject: "Your NexOra Verification Code<!-- Facebook-style verified badge -->
+<style>
+  .verified {
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .verified svg {
+    display: block;
+    filter: drop-shadow(0 0 2px rgba(255,255,255,0.7))
+            drop-shadow(0 0 4px rgba(255,255,255,0.5));
+  }
+
+  /* Smaller sizes */
+  .verified--xs { width: 10px; height: 10px; }
+  .verified--sm { width: 14px; height: 14px; }
+  .verified--md { width: 18px; height: 18px; }
+
+  /* Facebook blue color */
+  .verified[data-color="facebook"] circle { fill: #1877F2; }
+</style>
+
+<!-- use anywhere -->
+<span class="verified verified--sm" data-color="facebook" role="img" aria-label="Facebook Verified">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+    <circle cx="12" cy="12" r="12" fill="#1877F2"/>
+    <path d="M6.8 12.2l3 3 7.4-7.4"
+          fill="none"
+          stroke="#fff"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </svg>
+</span>",
       html: `
         <h2>Welcome to NexOra, ${name}!</h2>
         <p>Use the code below to verify your account:</p>
