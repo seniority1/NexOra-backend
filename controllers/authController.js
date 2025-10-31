@@ -72,16 +72,14 @@ export const register = async (req, res) => {
  */
 export const verifyCode = async (req, res) => {
   try {
-    let { email, code } = req.body;
+    const { email, code } = req.body;
     console.log("\n🟢 [VERIFY CODE]");
-    console.log("Email:", email, "| Code (raw):", code);
+    console.log("Email:", email, "| Code:", code);
 
     if (!email || !code) {
       console.log("❌ Missing email or code");
       return res.status(400).json({ message: "Email and code are required." });
     }
-
-    code = code.trim(); // trim input
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -94,8 +92,8 @@ export const verifyCode = async (req, res) => {
       return res.status(200).json({ message: "User already verified." });
     }
 
-    if (!user.verificationCode || user.verificationCode.trim() !== code) {
-      console.log("❌ Invalid verification code for:", email, "| Stored:", user.verificationCode);
+    if (user.verificationCode !== code) {
+      console.log("❌ Invalid verification code for:", email);
       return res.status(400).json({ message: "Invalid verification code." });
     }
 
@@ -260,16 +258,15 @@ export const forgotPassword = async (req, res) => {
  */
 export const resetPassword = async (req, res) => {
   try {
-    let { email, resetCode, newPassword } = req.body;
+    const { email, resetCode, newPassword } = req.body;
     console.log("\n🟢 [RESET PASSWORD]");
-    console.log("Email:", email, "| Reset Code (raw):", resetCode);
+    console.log("Email:", email);
+    console.log("Reset Code:", resetCode);
 
     if (!email || !resetCode || !newPassword) {
       console.log("❌ Missing fields");
       return res.status(400).json({ message: "All fields are required." });
     }
-
-    resetCode = resetCode.trim(); // ✅ Trim user input
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -277,8 +274,8 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    if (!user.resetCode || user.resetCode.trim() !== resetCode) {
-      console.log("❌ Invalid reset code for:", email, "| Stored:", user.resetCode);
+    if (user.resetCode !== resetCode) {
+      console.log("❌ Invalid reset code for:", email);
       return res.status(400).json({ message: "Invalid reset code." });
     }
 
@@ -288,3 +285,44 @@ export const resetPassword = async (req, res) => {
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
+    user.resetCode = null;
+    user.resetCodeExpiresAt = null;
+    await user.save();
+
+    console.log("✅ Password reset successfully for:", email);
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful!",
+    });
+  } catch (err) {
+    console.error("❌ Reset Password Error:", err.message);
+    res.status(500).json({ success: false, message: "Password reset failed." });
+  }
+};
+
+/**
+ * 📧 Helper: Send email using Resend API with full logging
+ */
+async function sendEmail({ to, subject, html }) {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error("🚨 Missing RESEND_API_KEY in environment variables!");
+      return;
+    }
+
+    const payload = {
+      from: "NexOra <onboarding@resend.dev>",
+      to,
+      subject,
+      html,
+    };
+
+    console.log("📦 Sending email to:", to);
+    const result = await resend.emails.send(payload);
+    console.log("✅ Email sent successfully:", result);
+  } catch (err) {
+    console.error("❌ Email sending failed:", err.message);
+    if (err.response) console.error("📨 Resend API Response:", err.response);
+  }
+}
