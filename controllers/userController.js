@@ -1,4 +1,4 @@
-import User from "../models/user.js";
+import User from "../models/User.js";
 
 // 🧠 Get user info (for dashboard)
 export const getUserInfo = async (req, res) => {
