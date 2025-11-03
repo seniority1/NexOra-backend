@@ -170,43 +170,94 @@ export const resendVerificationCode = async (req, res) => {
 };
 
 /**
- * 🔐 LOGIN
- */
+
+🔐 LOGIN
+*/
 export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    console.log("\n🟢 [LOGIN ATTEMPT]");
-    console.log("Email:", email);
+try {
+const { email, password } = req.body;
+console.log("\n🟢 [LOGIN ATTEMPT]");
+console.log("Email:", email);
 
-    if (!email || !password) {
-      console.log("❌ Missing fields");
-      return res.status(400).json({ message: "Email and password required." });
-    }
+if (!email || !password) {
+console.log("❌ Missing fields");
+return res.status(400).json({ message: "Email and password required." });
+}
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      console.log("❌ User not found:", email);
-      return res.status(404).json({ message: "User not found." });
-    }
+const user = await User.findOne({ email });
+if (!user) {
+console.log("❌ User not found:", email);
+return res.status(404).json({ message: "User not found." });
+}
 
-    if (!user.verified) {
-      console.log("⚠️ Unverified user:", email);
-      return res.status(403).json({ message: "Please verify your account first." });
-    }
+if (!user.verified) {
+console.log("⚠️ Unverified user:", email);
+return res.status(403).json({ message: "Please verify your account first." });
+}
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log("❌ Incorrect password for:", email);
-      return res.status(400).json({ message: "Invalid credentials." });
-    }
-
-    console.log("✅ Login successful for:", email);
-    res.status(200).json({ success: true, message: "Login successful." });
-  } catch (err) {
-    console.error("❌ Login Error:", err.message);
-    res.status(500).json({ success: false, message: "Login failed." });
-  }
+const isMatch = await bcrypt.compare(password, user.password);
+if (!isMatch) {
+console.log("❌ Incorrect password for:", email);
+return res.status(400).json({ message: "Invalid credentials." });
+}
+console.log("✅ Login successful for:", email);
+res.status(200).json({
+success: true,
+message: "Login successful.",
+user: {
+name: user.name,
+email: user.email,
+},
+});
+} catch (err) {
+console.error("❌ Login Error:", err.message);
+res.status(500).json({ success: false, message: "Login failed." });
+}
 };
+
+
+/**
+
+🧠 FORGOT PASSWORD — Send reset code
+*/
+export const forgotPassword = async (req, res) => {
+try {
+const { email } = req.body;
+console.log("\n🟡 [FORGOT PASSWORD]");
+console.log("Email:", email);
+
+if (!email) return res.status(400).json({ message: "Email is required." });
+
+const user = await User.findOne({ email });
+if (!user) {
+console.log("❌ No user found for:", email);
+return res.status(404).json({ message: "User not found." });
+}
+
+const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+user.resetCode = resetCode;
+user.resetCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+await user.save();
+
+console.log("📨 Sending reset code:", resetCode);
+
+await sendEmail({
+to: email,
+subject: "Your NexOra Password Reset Code",
+html:   <h2>Password Reset Request</h2>   <p>Use the code below to reset your password:</p>   <h1 style="color:#00ff88;">${resetCode}</h1>   <p>This code expires in <b>10 minutes</b>.</p>  ,
+});
+
+res.status(200).json({
+success: true,
+message: "Password reset code sent successfully!",
+});
+} catch (err) {
+console.error("❌ Forgot Password Error:", err.message);
+res.status(500).json({ success: false, message: "Failed to send reset code." });
+}
+};
+
+
 
 /**
  * 🧠 FORGOT PASSWORD — Send reset code
