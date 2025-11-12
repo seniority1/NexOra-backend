@@ -6,15 +6,12 @@ import {
   login,
   forgotPassword,
   resetPassword,
+  getProfile,
+  deleteAccount,
+  protect,
 } from "../controllers/authController.js";
-import { getProfile, updateProfile } from "../controllers/profileController.js";
-import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-
-/**
- * 🧾 AUTH ROUTES
- */
 
 // 🪄 Register a new user
 router.post("/register", register);
@@ -25,22 +22,19 @@ router.post("/verify", verifyCode);
 // 🔁 Resend verification code
 router.post("/resend", resendVerificationCode);
 
-// 🔐 Login user (returns user data)
+// 🔐 Login user
 router.post("/login", login);
 
-// 🧠 Forgot password (send reset code)
+// 🔑 Forgot password (send reset code)
 router.post("/forgot-password", forgotPassword);
 
-// 🔄 Reset password (verify code and update password)
+// 🔄 Reset password (verify code and update)
 router.post("/reset-password", resetPassword);
 
-// 👤 Get user profile (protected)
+// 🧑‍💼 Get user profile
 router.get("/profile", protect, getProfile);
 
-// ✏️ Update user profile (protected)
-router.put("/profile", protect, updateProfile);
+// 🧨 Danger Zone — Delete user account
+router.delete("/delete-account", protect, deleteAccount);
 
-/**
- * 🚀 Export
- */
 export default router;
