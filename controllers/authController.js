@@ -333,6 +333,32 @@ export const getProfile = async (req, res) => {
   }
 };
 
+/* 🧨 DANGER ZONE — Delete user account */
+export const deleteAccount = async (req, res) => {
+  try {
+    console.log("\n🧨 [DELETE ACCOUNT REQUEST]");
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log("❌ User not found:", userId);
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    await user.deleteOne();
+
+    console.log("🚮 Account deleted successfully:", user.email);
+
+    res.status(200).json({
+      success: true,
+      message: "Your account has been permanently deleted.",
+    });
+  } catch (err) {
+    console.error("❌ Delete Account Error:", err.message);
+    res.status(500).json({ message: "Server error deleting account." });
+  }
+};
+
 /* 📧 Helper: Send email using Resend API with full logging */
 async function sendEmail({ to, subject, html }) {
   try {
