@@ -1,7 +1,6 @@
 import fetch from "node-fetch";
 import User from "../models/User.js";
 
-// 💰 Verify payment and credit coins
 export const verifyAndCreditCoins = async (req, res) => {
   try {
     const { email, coins, transaction_id } = req.body;
@@ -13,9 +12,6 @@ export const verifyAndCreditCoins = async (req, res) => {
       });
     }
 
-    console.log("💳 Verifying Flutterwave transaction:", transaction_id);
-
-    // Verify transaction with Flutterwave API
     const verifyRes = await fetch(
       `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
       {
@@ -26,7 +22,6 @@ export const verifyAndCreditCoins = async (req, res) => {
     );
 
     const verifyData = await verifyRes.json();
-    console.log("✅ Flutterwave response:", verifyData);
 
     if (
       verifyData.status !== "success" ||
@@ -38,7 +33,6 @@ export const verifyAndCreditCoins = async (req, res) => {
       });
     }
 
-    // Update user's coin balance
     const user = await User.findOne({ email });
     if (!user)
       return res.status(404).json({ success: false, message: "User not found" });
@@ -46,15 +40,13 @@ export const verifyAndCreditCoins = async (req, res) => {
     user.coins = (user.coins || 0) + parseInt(coins);
     await user.save();
 
-    console.log(`🪙 ${coins} coins added to ${email}`);
-
     res.json({
       success: true,
       message: "Coins credited successfully",
       newCoins: user.coins,
     });
   } catch (err) {
-    console.error("❌ Payment verification error:", err.message);
+    console.error("Payment verification error:", err.message);
     res.status(500).json({
       success: false,
       message: "Server error verifying payment",
