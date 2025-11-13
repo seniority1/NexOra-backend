@@ -1,4 +1,3 @@
-// routes/payment.js
 import express from "express";
 import { verifyAndCreditCoins } from "../controllers/paymentController.js";
 
