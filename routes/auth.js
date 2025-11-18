@@ -36,5 +36,7 @@ router.get("/profile", protect, getProfile);
 
 // 🧨 Danger Zone — Delete user account
 router.delete("/delete-account", protect, deleteAccount);
+// 🚀 Start bot deployment
+router.post("/deploy/start", auth, startBot);
 
 export default router;
