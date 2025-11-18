@@ -17,7 +17,8 @@ app.use(cors());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
-app.use("/api/payment", paymentRoutes); // 🪙 add this line
+app.use("/api/payment", paymentRoutes);
+app.use("/api/deploy", deployRoutes);
 
 // MongoDB
 mongoose
