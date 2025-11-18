@@ -2,9 +2,11 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
-import paymentRoutes from "./routes/payment.js"; // 🪙 add this
+import paymentRoutes from "./routes/payment.js";
+import deployRoutes from "./routes/deploy.js";   // ✅ ADD THIS
 
 dotenv.config();
 
@@ -18,7 +20,7 @@ app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/payment", paymentRoutes);
-app.use("/api/deploy", deployRoutes);
+app.use("/api/deploy", deployRoutes);   // ✅ Now deploy works
 
 // MongoDB
 mongoose
