@@ -1,6 +1,6 @@
 import express from "express";
-import { startBot } from "../controllers/deployController.js";
 import auth from "../middleware/auth.js";
+import { startBot } from "../controllers/deployController.js";
 
 const router = express.Router();
 
