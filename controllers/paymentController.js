@@ -12,6 +12,7 @@ export const verifyAndCreditCoins = async (req, res) => {
       });
     }
 
+    // 🔍 VERIFY PAYMENT FROM FLUTTERWAVE
     const verifyRes = await fetch(
       `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
       {
@@ -33,17 +34,55 @@ export const verifyAndCreditCoins = async (req, res) => {
       });
     }
 
+    // 🔍 FIND USER
     const user = await User.findOne({ email });
     if (!user)
       return res.status(404).json({ success: false, message: "User not found" });
 
-    user.coins = (user.coins || 0) + parseInt(coins);
+    // 💰 CREDIT USER COINS
+    const purchasedCoins = parseInt(coins);
+    user.coins = (user.coins || 0) + purchasedCoins;
+
+    user.transactions.push({
+      amount: purchasedCoins,
+      type: "purchase",
+      description: `Purchased ${purchasedCoins} NexCoins`,
+    });
+
+    console.log("💰 User purchased coins:", user.email);
+
+    let referralRewardReleased = false;
+
+    // 🎁 IF USER WAS REFERRED → RELEASE REFERRAL BONUS
+    if (user.referredBy) {
+      const referrer = await User.findOne({ referralCode: user.referredBy });
+
+      if (referrer && referrer.pendingReferralCoins > 0) {
+        const reward = referrer.pendingReferralCoins;
+
+        referrer.coins += reward;
+        referrer.pendingReferralCoins = 0;
+
+        referrer.transactions.push({
+          amount: reward,
+          type: "reward",
+          description: `Referral reward activated for inviting ${user.name}`,
+        });
+
+        await referrer.save();
+        referralRewardReleased = true;
+
+        console.log("🎉 Referral reward released to:", referrer.email);
+      }
+    }
+
     await user.save();
 
     res.json({
       success: true,
       message: "Coins credited successfully",
       newCoins: user.coins,
+      referralRewardReleased,
     });
   } catch (err) {
     console.error("Payment verification error:", err.message);
