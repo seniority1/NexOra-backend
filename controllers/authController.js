@@ -6,56 +6,88 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const JWT_SECRET = process.env.JWT_SECRET || "nexora_secret_key";
 
-/* 🪄 REGISTER — Create new user and send verification code */
+/* 🪄 REGISTER — Create new user, referral support, and send verification code */
 export const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, referralCode } = req.body;
     console.log("\n🟢 [REGISTER ATTEMPT]");
     console.log("Name:", name);
     console.log("Email:", email);
+    console.log("Referral Used:", referralCode || "none");
     console.log("Password Length:", password?.length);
 
+    // 1️⃣ Validate required fields
     if (!name || !email || !password) {
-      console.log("❌ Missing required fields");
       return res.status(400).json({ message: "All fields are required." });
     }
 
+    // 2️⃣ Check if email already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      console.log("⚠️ Email already registered:", email);
       return res.status(400).json({ message: "Email already registered." });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    // 3️⃣ Validate referral code if provided
+    let referrer = null;
+    if (referralCode) {
+      referrer = await User.findOne({ referralCode });
+      if (!referrer) {
+        return res.status(400).json({ message: "Invalid referral code." });
+      }
+    }
 
+    // 4️⃣ Hash password securely
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 5️⃣ Generate secure 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // 6️⃣ Create new user (referralCode auto-generated in User model)
     const newUser = new User({
       name,
       email,
       password: hashedPassword,
       verificationCode,
       codeExpiresAt,
+      referredBy: referralCode || null,
     });
     await newUser.save();
-
     console.log("✅ User saved successfully:", newUser._id);
-    console.log("📨 Preparing verification email...");
 
+    // 7️⃣ If referral used, add pending coins to referrer
+    if (referrer) {
+      referrer.pendingReferralCoins = (referrer.pendingReferralCoins || 0) + 100;
+
+      referrer.transactions = referrer.transactions || [];
+      referrer.transactions.push({
+        amount: 100,
+        type: "reward",
+        description: `Referral reward pending for inviting ${name}`,
+        date: new Date(),
+      });
+
+      await referrer.save();
+      console.log("🎁 Pending referral coins added for", referrer.email);
+    }
+
+    // 8️⃣ Send verification email
+    console.log("📨 Sending verification email...");
     await sendEmail({
       to: email,
       subject: "Your NexOra Verification Code",
       html: `
         <h2>Welcome to NexOra, ${name}!</h2>
-        <p>Use the code below to verify your account:</p>
+        <p>Your verification code:</p>
         <h1 style="color:#00ff88;">${verificationCode}</h1>
-        <p>Code expires in <b>10 minutes</b>.</p>
+        <p>Expires in <b>10 minutes</b>.</p>
       `,
     });
 
+    // 9️⃣ Respond to client
     res.status(201).json({
       success: true,
-      message: "Registration successful! Verification code sent to your email.",
+      message: "Registration successful! Verification code sent.",
     });
   } catch (err) {
     console.error("❌ Register Error:", err.message);
@@ -66,7 +98,6 @@ export const register = async (req, res) => {
     });
   }
 };
-
 /* ✅ VERIFY CODE */
 export const verifyCode = async (req, res) => {
   try {
