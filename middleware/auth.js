@@ -2,19 +2,22 @@ import jwt from "jsonwebtoken";
 
 export default function auth(req, res, next) {
   try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+    const authHeader =
+      req.headers.authorization || req.header("Authorization");
 
-    if (!token) {
-      return res.status(401).json({ message: "No token, authorization denied" });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Not authorized, no token." });
     }
 
-    // Verify token
+    const token = authHeader.replace("Bearer ", "").trim();
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = decoded; // attach user info to request
+    req.user = decoded;
+
     next();
   } catch (err) {
     console.error("Auth Error:", err.message);
-    res.status(401).json({ message: "Token is not valid" });
+    return res.status(401).json({ message: "Token is not valid." });
   }
 }
