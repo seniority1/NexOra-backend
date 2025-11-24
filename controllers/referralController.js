@@ -22,7 +22,7 @@ export const getReferralDashboard = async (req, res) => {
       coins: user.coins,
       pendingReferralCoins: user.pendingReferralCoins,
       referralTransactions,
-      referralLink: `https://yourdomain.com/register?ref=${user.referralCode}`,
+      referralLink: `https://nex0ra.netlify.app/register?ref=${user.referralCode}`,
     });
   } catch (err) {
     console.error("Referral dashboard error:", err.message);
