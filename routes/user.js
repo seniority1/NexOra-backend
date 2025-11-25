@@ -1,9 +1,9 @@
 import express from "express";
-import {
-  getUserInfo,
-  updateCoins,
+import { 
+  getUserInfo, 
+  updateCoins, 
   addDeployment,
-  getTransactions,
+  getTransactions      // 👈 NEW import
 } from "../controllers/userController.js";
 
 const router = express.Router();
@@ -11,13 +11,13 @@ const router = express.Router();
 // 🧠 Get user info
 router.get("/info", getUserInfo);
 
-// 💰 Update coin balance + log transaction
+// 💰 Update coins
 router.post("/updateCoins", updateCoins);
-
-// 📜 Get transaction history
-router.get("/transactions", getTransactions);
 
 // 🚀 Add a new deployment
 router.post("/addDeployment", addDeployment);
+
+// 📜 NEW: Get transaction history
+router.get("/transactions", getTransactions);   // 👈 Added route
 
 export default router;
