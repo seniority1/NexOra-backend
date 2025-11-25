@@ -14,7 +14,6 @@ export const register = async (req, res) => {
     console.log("Name:", name);
     console.log("Email:", email);
     console.log("Referral Used:", referralCode || "none");
-    console.log("Password Length:", password?.length);
 
     // 1️⃣ Validate required fields
     if (!name || !email || !password) {
@@ -27,9 +26,9 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: "Email already registered." });
     }
 
-    // 3️⃣ Validate referral code if provided
+    // 3️⃣ Validate referral code (optional)
     let referrer = null;
-    if (referralCode) {
+    if (referralCode && referralCode.trim() !== "") {
       referrer = await User.findOne({ referralCode });
       if (!referrer) {
         return res.status(400).json({ message: "Invalid referral code." });
@@ -43,15 +42,16 @@ export const register = async (req, res) => {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // 6️⃣ Create new user (referralCode auto-generated in User model)
+    // 6️⃣ Create new user (stores referralCode ONLY if valid)
     const newUser = new User({
       name,
       email,
       password: hashedPassword,
       verificationCode,
       codeExpiresAt,
-      referredBy: referralCode || null,
+      referredBy: referrer ? referralCode : null,
     });
+
     await newUser.save();
     console.log("✅ User saved successfully:", newUser._id);
 
@@ -59,7 +59,6 @@ export const register = async (req, res) => {
     if (referrer) {
       referrer.pendingReferralCoins = (referrer.pendingReferralCoins || 0) + 100;
 
-      referrer.transactions = referrer.transactions || [];
       referrer.transactions.push({
         amount: 100,
         type: "reward",
@@ -72,7 +71,6 @@ export const register = async (req, res) => {
     }
 
     // 8️⃣ Send verification email
-    console.log("📨 Sending verification email...");
     await sendEmail({
       to: email,
       subject: "Your NexOra Verification Code",
@@ -98,6 +96,7 @@ export const register = async (req, res) => {
     });
   }
 };
+
 /* ✅ VERIFY CODE */
 export const verifyCode = async (req, res) => {
   try {
