@@ -398,7 +398,7 @@ async function sendEmail({ to, subject, html }) {
     }
 
     const payload = {
-      from: "NexOra <onboarding@resend.dev>",
+      from: "NexOra <noreply@nexora.org.ng>",
       to,
       subject,
       html,
