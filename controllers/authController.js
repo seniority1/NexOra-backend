@@ -70,18 +70,30 @@ export const register = async (req, res) => {
       console.log("🎁 Pending referral coins added for", referrer.email);
     }
 
-    // 8️⃣ Send verification email
-    await sendEmail({
-      to: email,
-      subject: "Your NexOra Verification Code",
-      html: `
-        <h2>Welcome to NexOra, ${name}!</h2>
-        <p>Your verification code:</p>
-        <h1 style="color:#00ff88;">${verificationCode}</h1>
-        <p>Expires in <b>10 minutes</b>.</p>
-      `,
-    });
+   // 8️⃣ Send verification email
+await sendEmail({
+  to: email,
+  subject: "Your NexOra Verification Code",
+  html: `
+    <div style="font-family: 'Poppins', sans-serif; background-color: #121212; padding: 40px 0; text-align: center;">
+      <div style="max-width: 500px; margin: auto; background-color: #1a1a1a; border-radius: 12px; padding: 30px; color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        
+        <h2 style="margin: 0; color: #00ff88;">Welcome to NexOra, ${name}!</h2>
+        <p style="font-size:16px; color:#bbbbbb; margin: 20px 0;">Your verification code:</p>
+        <h1 style="color:#00ff88; font-size:36px; margin:20px 0;">${verificationCode}</h1>
+        <p style="font-size:14px; color:#888; margin: 20px 0;">Expires in <b>10 minutes</b>.</p>
 
+        <hr style="border: 1px solid #333; margin: 30px 0;">
+
+        <!-- Footer -->
+        <p style="font-size:12px; color:#555; margin:0;">
+          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
+          <span style="color:#00ff88;">https://nexora.com</span>
+        </p>
+      </div>
+    </div>
+  `,
+});
     // 9️⃣ Respond to client
     res.status(201).json({
       success: true,
@@ -175,16 +187,28 @@ export const resendVerificationCode = async (req, res) => {
     console.log("📨 Sending new verification code:", newCode);
 
     await sendEmail({
-      to: email,
-      subject: "Your New NexOra Verification Code",
-      html: `
-        <h2>Hello again!</h2>
-        <p>Here’s your new NexOra code:</p>
-        <h1 style="color:#00ff88;">${newCode}</h1>
-        <p>Expires in <b>10 minutes</b>.</p>
-      `,
-    });
+  to: email,
+  subject: "Your New NexOra Verification Code",
+  html: `
+    <div style="font-family: 'Poppins', sans-serif; background-color: #121212; padding: 40px 0; text-align: center;">
+      <div style="max-width: 500px; margin: auto; background-color: #1a1a1a; border-radius: 12px; padding: 30px; color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        
+        <h2 style="margin: 0; color: #00ff88;">Hello again!</h2>
+        <p style="font-size:16px; color:#bbbbbb; margin: 20px 0;">Here’s your new NexOra code:</p>
+        <h1 style="color:#00ff88; font-size:36px; margin:20px 0;">${newCode}</h1>
+        <p style="font-size:14px; color:#888; margin: 20px 0;">Expires in <b>10 minutes</b>.</p>
 
+        <hr style="border: 1px solid #333; margin: 30px 0;">
+
+        <!-- Footer -->
+        <p style="font-size:12px; color:#555; margin:0;">
+          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
+          <span style="color:#00ff88;">https://nexora.com</span>
+        </p>
+      </div>
+    </div>
+  `,
+});
     res.status(200).json({
       success: true,
       message: "New verification code sent successfully!",
@@ -267,16 +291,28 @@ export const forgotPassword = async (req, res) => {
     console.log("📨 Sending reset code:", resetCode);
 
     await sendEmail({
-      to: email,
-      subject: "Your NexOra Password Reset Code",
-      html: `
-        <h2>Password Reset Request</h2>
-        <p>Use the code below to reset your password:</p>
-        <h1 style="color:#00ff88;">${resetCode}</h1>
-        <p>This code expires in <b>10 minutes</b>.</p>
-      `,
-    });
+  to: email,
+  subject: "Your NexOra Password Reset Code",
+  html: `
+    <div style="font-family: 'Poppins', sans-serif; background-color: #121212; padding: 40px 0; text-align: center;">
+      <div style="max-width: 500px; margin: auto; background-color: #1a1a1a; border-radius: 12px; padding: 30px; color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        
+        <h2 style="margin: 0; color: #00ff88;">Password Reset Request</h2>
+        <p style="font-size:16px; color:#bbbbbb; margin: 20px 0;">Use the code below to reset your password:</p>
+        <h1 style="color:#00ff88; font-size:36px; margin:20px 0;">${resetCode}</h1>
+        <p style="font-size:14px; color:#888; margin: 20px 0;">This code expires in <b>10 minutes</b>.</p>
 
+        <hr style="border: 1px solid #333; margin: 30px 0;">
+
+        <!-- Footer -->
+        <p style="font-size:12px; color:#555; margin:0;">
+          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
+          <span style="color:#00ff88;">https://nexora.com</span>
+        </p>
+      </div>
+    </div>
+  `,
+});
     res.status(200).json({
       success: true,
       message: "Password reset code sent successfully!",
