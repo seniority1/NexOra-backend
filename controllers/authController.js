@@ -87,8 +87,8 @@ await sendEmail({
 
         <!-- Footer -->
         <p style="font-size:12px; color:#555; margin:0;">
-          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
-          <span style="color:#00ff88;">https://nexora.com</span>
+          &copy; ${new Date().getFullYear()} NexOra<br>
+          <span style="color:#00ff88;">https://nexora.org.ng</span>
         </p>
       </div>
     </div>
@@ -202,8 +202,8 @@ export const resendVerificationCode = async (req, res) => {
 
         <!-- Footer -->
         <p style="font-size:12px; color:#555; margin:0;">
-          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
-          <span style="color:#00ff88;">https://nexora.com</span>
+          &copy; ${new Date().getFullYear()} NexOra<br>
+          <span style="color:#00ff88;">https://nexora.org.ng</span>
         </p>
       </div>
     </div>
@@ -306,8 +306,8 @@ export const forgotPassword = async (req, res) => {
 
         <!-- Footer -->
         <p style="font-size:12px; color:#555; margin:0;">
-          &copy; ${new Date().getFullYear()} NexOra Technologies<br>
-          <span style="color:#00ff88;">https://nexora.com</span>
+          &copy; ${new Date().getFullYear()} NexOra<br>
+          <span style="color:#00ff88;">https://nexora.org.ng</span>
         </p>
       </div>
     </div>
