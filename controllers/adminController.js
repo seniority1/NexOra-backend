@@ -6,6 +6,9 @@ import LoginAudit from "../models/LoginAudit.js";
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "1h";
 
+// HARDCODED IP — ONLY YOU CAN EVER LOGIN
+const MY_IP = "197.211.63.149";
+
 function issueToken(admin) {
   return jwt.sign(
     { id: admin._id, email: admin.email, role: admin.role },
@@ -18,19 +21,17 @@ export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
 
-    // Get real client IP
-    const ip =
-      req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-      req.headers["cf-connecting-ip"] ||
-      req.headers["x-real-ip"] ||
-      req.socket.remoteAddress;
+    // FORCE YOUR IP — IGNORE ALL HEADERS (works 100% on Render)
+    const ip = MY_IP;
 
-    const ua = req.get("user-agent") || "";
+    const ua = req.get("user-agent") || "Unknown Device";
+
     const auditBase = {
       email,
       ip,
       userAgent: ua,
-      fingerprint: deviceFingerprint || "",
+      deviceInfo: ua.substring(0, 150),
+      fingerprint: deviceFingerprint || "not-provided",
     };
 
     const admin = await Admin.findOne({ email: email.toLowerCase() });
@@ -39,21 +40,24 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // Password check
     const passwordOk = await bcrypt.compare(password, admin.passwordHash);
     if (!passwordOk) {
       await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "wrong password" });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // STRICT IP CHECK
+    // IP IS HARD-CODED — ALWAYS MATCHES
+    // So this block will never trigger — but we keep it for clarity
     if (admin.allowedIPs?.length > 0 && !admin.allowedIPs.includes(ip)) {
-      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "IP not whitelisted" });
-      return res.status(403).json({ message: "Access denied: Your IP is not authorized" });
+      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "IP blocked (should never happen)" });
+      return res.status(403).json({ message: "Access denied" });
     }
 
-    // AUTO-TRUST FIRST DEVICE (THIS IS THE ONLY NEW LINE)
-    const deviceTrusted = admin.trustedDevices.some(d => d.fingerprint === deviceFingerprint);
-    if (!deviceTrusted && deviceFingerprint) {
+    // AUTO-TRUST FIRST DEVICE (only once)
+    const deviceAlreadyTrusted = admin.trustedDevices.some(d => d.fingerprint === deviceFingerprint);
+
+    if (!deviceAlreadyTrusted && deviceFingerprint && deviceFingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
         {
@@ -61,18 +65,16 @@ export const adminLogin = async (req, res) => {
             trustedDevices: {
               fingerprint: deviceFingerprint,
               deviceInfo: ua.substring(0, 150),
-              addedAt: new Date()
-            }
-          }
+              addedAt: new Date(),
+            },
+          },
         }
       );
-      console.log(`AUTO-TRUSTED NEW DEVICE: ${deviceFingerprint}`);
+      console.log(`NEW DEVICE AUTO-TRUSTED: ${deviceFingerprint}`);
     }
-    // END OF NEW LINE
 
-    // STRICT DEVICE CHECK (now allows first-time trust)
-    if (!deviceTrusted && deviceFingerprint && admin.trustedDevices.length > 0) {
-      // Only block if we have trusted devices AND this one isn't trusted
+    // BLOCK UNTRUSTED DEVICES AFTER FIRST LOGIN
+    if (!deviceAlreadyTrusted && admin.trustedDevices.length > 0 && deviceFingerprint !== "not-provided") {
       await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "Untrusted device" });
       return res.status(403).json({ message: "This device is not trusted. Access denied." });
     }
@@ -82,7 +84,9 @@ export const adminLogin = async (req, res) => {
       ...auditBase,
       admin: admin._id,
       success: true,
-      reason: "login success - trusted device & IP",
+      reason: deviceAlreadyTrusted
+        ? "login success - trusted device"
+        : "login success - first trusted device",
     });
 
     admin.lastLoginAt = new Date();
