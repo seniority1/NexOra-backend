@@ -2,6 +2,10 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+import { initAdmin } from "./utils/initAdmin.js";
+
+// After mongoose.connect(...)
+await initAdmin();
 
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
