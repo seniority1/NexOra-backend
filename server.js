@@ -29,58 +29,52 @@ app.use("/api/deploy", deployRoutes);
 app.use("/api/referral", referralRoutes);
 app.use("/api/admin", adminRoutes);
 
-// MongoDB Connection + Smart Security Setup
+// MongoDB Connection + ONE-TIME ADMIN SETUP + HARD-CODED IP
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
     console.log("MongoDB Connected");
 
-    // ——— 1. AUTO-CREATE ADMIN (ONE TIME) ———
-    const existingAdmin = await Admin.findOne();
+    const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+
+    // 1. Auto-create admin account (only once)
+    const existingAdmin = await Admin.findOne({ email: adminEmail });
 
     if (!existingAdmin) {
-      const defaultEmail = process.env.ADMIN_EMAIL;
-      const defaultPassword = process.env.ADMIN_PASSWORD;
-
-      if (!defaultEmail || !defaultPassword) {
-        console.error("ADMIN_EMAIL or ADMIN_PASSWORD missing in env");
-      } else {
-        const hash = await bcrypt.hash(defaultPassword, 12);
-        const admin = new Admin({
-          name: "Main Admin",
-          email: defaultEmail,
-          passwordHash: hash,
-        });
-        await admin.save();
-        console.log("ADMIN ACCOUNT CREATED:", defaultEmail);
+      if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
+        console.error("ADMIN_EMAIL and ADMIN_PASSWORD required in .env");
+        process.exit(1);
       }
+
+      const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 12);
+      await new Admin({
+        name: "Alphonsus Okoko",
+        email: process.env.ADMIN_EMAIL,
+        passwordHash: hash,
+        allowedIPs: ["197.211.63.149"],        // ← HARD-CODED FOREVER
+        trustedDevices: [],
+      }).save();
+
+      console.log("Admin created + IP 197.211.63.149 HARD-CODED");
     } else {
-      console.log("Admin already exists, skipping creation");
+      // Ensure your IP is in the array even if admin already exists
+      await Admin.updateOne(
+        { email: adminEmail },
+        { $addToSet: { allowedIPs: "197.211.63.149" } }
+      );
+      console.log("Hard-coded IP 197.211.63.149 confirmed in whitelist");
     }
 
-    // ——— 2. AUTO-SECURE ADMIN ON EVERY DEPLOY (YOUR REQUEST) ———
-    const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-    if (adminEmail) {
-      try {
-        // Get current public IP (works on Render, Railway, etc.)
-        const ipResponse = await fetch("https://api.ipify.org");
-        const currentIP = await ipResponse.text();
-
-        const admin = await Admin.findOne({ email: adminEmail });
-        if (admin && currentIP && !admin.allowedIPs.includes(currentIP)) {
-          await Admin.updateOne(
-            { email: adminEmail },
-            { $addToSet: { allowedIPs: currentIP } } // $addToSet = no duplicates
-          );
-          console.log(`Auto-added current IP to whitelist: ${currentIP}`);
-        }
-      } catch (err) {
-        console.warn("Could not auto-add IP (will try next startup):", err.message);
-      }
-    }
+    // NO MORE AUTO-IP FETCHING — REMOVED COMPLETELY
   })
-  .catch((err) => console.error("MongoDB Error:", err));
+  .catch((err) => {
+    console.error("MongoDB Error:", err);
+    process.exit(1);
+  });
 
 // Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Admin IP locked to: 197.211.63.149`);
+});
