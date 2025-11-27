@@ -8,6 +8,7 @@ import userRoutes from "./routes/user.js";
 import paymentRoutes from "./routes/payment.js";
 import deployRoutes from "./routes/deploy.js";   // ✅ ADD THIS
 import referralRoutes from "./routes/referral.js";
+import adminRoutes from "./routes/admin.js";
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/deploy", deployRoutes);   // ✅ Now deploy works
 app.use("/api/referral", referralRoutes);
+app.use("/api/admin", adminRoutes);
 
 // MongoDB
 mongoose
