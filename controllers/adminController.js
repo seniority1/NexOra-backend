@@ -4,6 +4,8 @@ import Admin from "../models/Admin.js";
 import LoginAudit from "../models/LoginAudit.js";
 import User from "../models/User.js";
 import GiftLog from "../models/GiftLog.js";        // ← NEW: Gift logging
+import Broadcast from "../models/Broadcast.js";
+
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "1h";
@@ -265,6 +267,40 @@ export const getSecurityLogs = async (req, res) => {
     });
   } catch (err) {
     console.error("Get security logs error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// BROADCAST TO ALL USERS
+export const sendBroadcast = async (req, res) => {
+  try {
+    const { title, message } = req.body;
+
+    if (!title?.trim() || !message?.trim()) {
+      return res.status(400).json({ message: "Title and message required" });
+    }
+
+    const broadcast = await Broadcast.create({
+      title: title.trim(),
+      message: message.trim(),
+      sentBy: req.admin.email,
+    });
+
+    // SEND TO ALL CONNECTED USERS IN REAL TIME
+    global.io?.emit("newBroadcast", {
+      _id: broadcast._id,
+      title: broadcast.title,
+      message: broadcast.message,
+      sentAt: broadcast.sentAt,
+    });
+
+    return res.json({
+      success: true,
+      message: "Broadcast sent to all users",
+      broadcast,
+    });
+  } catch (err) {
+    console.error("Broadcast error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
