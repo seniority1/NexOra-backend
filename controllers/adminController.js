@@ -249,3 +249,22 @@ export const unbanUser = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// GET SECURITY LOGS — All login attempts, bans, etc
+export const getSecurityLogs = async (req, res) => {
+  try {
+    const logs = await LoginAudit.find()
+      .sort({ createdAt: -1 })  // Newest first
+      .limit(100)  // Last 100 for performance
+      .lean();  // Faster
+
+    return res.json({
+      success: true,
+      total: logs.length,
+      logs,
+    });
+  } catch (err) {
+    console.error("Get security logs error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
