@@ -14,6 +14,9 @@ router.get("/me", verifyAdmin, (req, res) => {
 
 // Fetch all users (protected)
 router.get("/users", verifyAdmin, getAllUsers);
+// GET gifted users
+router.get("/gifted-users", verifyAdmin, getGiftedUsers);
+
 
 // ✅ NEW: Add coins to a user (protected)
 router.post("/add-coins", verifyAdmin, addCoins);
