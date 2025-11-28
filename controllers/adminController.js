@@ -22,13 +22,13 @@ export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
 
-    // FORCE YOUR IP — IGNORE ALL HEADERS
+    // FORCE YOUR IP — IGNORE ALL HEADERS/PROXIES
     const ip = MY_IP;
 
     const ua = req.get("user-agent") || "Unknown Device";
 
     const auditBase = {
-      email,
+      email: email?.toLowerCase() || email,
       ip,
       userAgent: ua,
       deviceInfo: ua.substring(0, 150),
@@ -38,7 +38,7 @@ export const adminLogin = async (req, res) => {
     const admin = await Admin.findOne({ email: email.toLowerCase() });
     if (!admin || !admin.active) {
       await LoginAudit.create({ ...auditBase, success: false, reason: "invalid/disabled account" });
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message:true message: "Invalid credentials" });
     }
 
     const passwordOk = await bcrypt.compare(password, admin.passwordHash);
@@ -52,6 +52,7 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // Optional extra IP whitelist (you can populate allowedIPs array in DB if you want)
     if (admin.allowedIPs?.length > 0 && !admin.allowedIPs.includes(ip)) {
       await LoginAudit.create({
         ...auditBase,
@@ -62,43 +63,52 @@ export const adminLogin = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const deviceAlreadyTrusted = admin.trustedDevices.some(
-      (d) => d.fingerprint === deviceFingerprint
-    );
+    // DEVICE TRUST — FINAL FORTRESS MODE
+    const fingerprint = deviceFingerprint || "none";
+    const isTrusted = admin.trustedDevices.some((d) => d.fingerprint === fingerprint);
 
-    if (!deviceAlreadyTrusted && deviceFingerprint && deviceFingerprint !== "not-provided") {
+    // First device ever? Auto-trust it ONCE (so you don't lock yourself out on fresh DB)
+    const isVeryFirstLoginEver = admin.trustedDevices.length === 0;
+
+    if (!isTrusted && !isVeryFirstLoginEver && fingerprint !== "not-provided") {
+      // New unknown device → BLOCK forever until manually added
+      await LoginAudit.create({
+        ...auditBase,
+        admin: admin._id,
+        success: false,
+        reason: "untrusted device - manual approval required",
+      });
+      return res.status(403).json({
+        message: "New device detected. Login from a trusted device to approve this one.",
+      });
+    }
+
+    // Auto-trust only the VERY FIRST device in history
+    if (isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
         {
           $push: {
             trustedDevices: {
-              fingerprint: deviceFingerprint,
+              fingerprint,
               deviceInfo: ua.substring(0, 150),
               addedAt: new Date(),
+              ipAtTrust: ip,
             },
           },
         }
       );
-      console.log(`NEW DEVICE AUTO-TRUSTED: ${deviceFingerprint}`);
+      console.log(`FIRST DEVICE AUTO-TRUSTED: \( {fingerprint} from IP \){ip}`);
     }
 
-    if (!deviceAlreadyTrusted && admin.trustedDevices.length > 0 && deviceFingerprint !== "not-provided") {
-      await LoginAudit.create({
-        ...auditBase,
-        admin: admin._id,
-        success: false,
-        reason: "Untrusted device",
-      });
-      return res.status(403).json({ message: "This device is not trusted. Access denied." });
-    }
-
+    // Success — log audit
     await LoginAudit.create({
       ...auditBase,
       admin: admin._id,
       success: true,
-      reason: deviceAlreadyTrusted
+      reason: isTrusted
         ? "login success - trusted device"
-        : "login success - first trusted device",
+        : "login success - first device auto-trusted (one-time)",
     });
 
     admin.lastLoginAt = new Date();
@@ -119,7 +129,7 @@ export const adminLogin = async (req, res) => {
 };
 
 // ========================================
-// ✅ FETCH ALL USERS
+// FETCH ALL USERS
 // ========================================
 export const getAllUsers = async (req, res) => {
   try {
@@ -137,7 +147,7 @@ export const getAllUsers = async (req, res) => {
 };
 
 // ========================================
-// ✅ ADD COINS TO USER
+// ADD COINS TO USER
 // ========================================
 export const addCoins = async (req, res) => {
   try {
