@@ -189,3 +189,63 @@ export const getGiftedUsers = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// BAN USER
+export const banUser = async (req, res) => {
+  try {
+    const { email, reason } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.isBanned) {
+      return res.status(400).json({ message: "User already banned" });
+    }
+
+    user.isBanned = true;
+    user.bannedAt = new Date();
+    user.bannedBy = req.admin.email; // from verifyAdmin middleware
+    user.banReason = reason || "Violation of terms";
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "User banned permanently",
+      user: { name: user.name, email: user.email },
+    });
+  } catch (err) {
+    console.error("Ban error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// UNBAN USER
+export const unbanUser = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.isBanned) {
+      return res.status(400).json({ message: "User is not banned" });
+    }
+
+    user.isBanned = false;
+    user.bannedAt = null;
+    user.bannedBy = null;
+    user.banReason = null;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "User unbanned successfully",
+      user: { name: user.name, email: user.email },
+    });
+  } catch (err) {
+    console.error("Unban error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
