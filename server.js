@@ -2,6 +2,8 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+import http from "http";                    // ← NEW
+import { Server } from "socket.io";          // ← NEW
 
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
@@ -16,6 +18,29 @@ import bcrypt from "bcrypt";
 dotenv.config();
 
 const app = express();
+
+// Create HTTP server (required for Socket.io)
+const server = http.createServer(app);        // ← CHANGED FROM app.listen
+
+// Initialize Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: "*",                      // Change to your frontend URL in production
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Make io globally available so admin controller can broadcast
+global.io = io;
+
+// Optional: Log connections (you’ll see when users connect)
+io.on("connection", (socket) => {
+  console.log(`User connected: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.id}`);
+  });
+});
 
 // Middleware
 app.use(express.json());
@@ -72,9 +97,10 @@ mongoose
     process.exit(1);
   });
 
-// Server
+// Start server using the HTTP server (not app.listen)
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`NexOra Backend + Socket.io LIVE on port ${PORT}`);
+  console.log(`Broadcast System ACTIVE — You now control the airwaves`);
   console.log(`Admin IP locked to: 197.211.63.149`);
 });
