@@ -137,6 +137,46 @@ export const getAllUsers = async (req, res) => {
 };
 
 // ========================================
+// ✅ GET ALL GIFTED USERS
+// ========================================
+export const getGiftedUsers = async (req, res) => {
+  try {
+    // Fetch all users who have at least one gift transaction
+    const users = await User.find({ "transactions.type": "gift" }, "name email transactions").sort({ "transactions.createdAt": -1 });
+
+    // Flatten the gifted transactions
+    const giftedUsers = [];
+    users.forEach(user => {
+      user.transactions.forEach(tx => {
+        if (tx.type === "gift") {
+          giftedUsers.push({
+            name: user.name,
+            email: user.email,
+            amount: tx.amount,
+            createdAt: tx.createdAt,
+          });
+        }
+      });
+    });
+
+    // Sort by most recent first
+    giftedUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return res.json({
+      success: true,
+      total: giftedUsers.length,
+      users: giftedUsers,
+    });
+  } catch (err) {
+    console.error("Fetch gifted users error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching gifted users",
+    });
+  }
+};
+
+// ========================================
 // ✅ ADD COINS TO USER
 // ========================================
 export const addCoins = async (req, res) => {
