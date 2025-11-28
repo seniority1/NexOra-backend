@@ -1,8 +1,8 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
-import LoginAudit from "models/LoginAudit.js";
-import User from "models/User.js";
+import LoginAudit from "../models/LoginAudit.js";        // ← FIXED
+import User from "../models/User.js";                  // ← FIXED (just in case)
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "1h";
@@ -22,9 +22,7 @@ export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
 
-    // FORCE YOUR IP ONLY
     const ip = MY_IP;
-
     const ua = req.get("user-agent") || "Unknown Device";
 
     const auditBase = {
@@ -38,7 +36,7 @@ export const adminLogin = async (req, res) => {
     const admin = await Admin.findOne({ email: email?.toLowerCase() });
     if (!admin || !admin.active) {
       await LoginAudit.create({ ...auditBase, success: false, reason: "invalid/disabled account" });
-      return res.status(401).json({ message: "Invalid credentials" }); // ← FIXED
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const passwordOk = await bcrypt.compare(password, admin.passwordHash);
@@ -52,7 +50,6 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Optional DB-based IP whitelist
     if (admin.allowedIPs?.length > 0 && !admin.allowedIPs.includes(ip)) {
       await LoginAudit.create({
         ...auditBase,
@@ -63,12 +60,11 @@ export const adminLogin = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    // FORTRESS-MODE DEVICE TRUST
     const fingerprint = deviceFingerprint || "none";
     const isTrusted = admin.trustedDevices.some((d) => d.fingerprint === fingerprint);
     const isVeryFirstLoginEver = admin.trustedDevices.length === 0;
 
-    // Block any new device unless it's literally the very first one in history
+    // Block any new device except the very first one in history
     if (!isTrusted && !isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await LoginAudit.create({
         ...auditBase,
@@ -81,7 +77,7 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    // Auto-trust the very first device ever (so you don’t lock yourself out on fresh DB)
+    // Auto-trust only the very first device ever
     if (isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
@@ -96,10 +92,9 @@ export const adminLogin = async (req, res) => {
           },
         }
       );
-      console.log(`FIRST DEVICE AUTO-TRUSTED: \( {fingerprint} (IP: \){ip})`);
+      console.log(`FIRST DEVICE AUTO-TRUSTED: \( {fingerprint} (IP: \){ip}`);
     }
 
-    // Success
     await LoginAudit.create({
       ...auditBase,
       admin: admin._id,
@@ -124,9 +119,6 @@ export const adminLogin = async (req, res) => {
   }
 };
 
-// ========================================
-// FETCH ALL USERS
-// ========================================
 export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({}, "name email coins createdAt").sort({ createdAt: -1 });
@@ -137,9 +129,6 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// ========================================
-// ADD COINS TO USER
-// ========================================
 export const addCoins = async (req, res) => {
   try {
     const { email, amount } = req.body;
