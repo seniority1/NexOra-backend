@@ -36,20 +36,20 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    // 🪙 NexCoins balance
+    // NexCoins balance
     coins: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // 🕒 Pending referral reward (locked until first purchase)
+    // Pending referral reward (locked until first purchase)
     pendingReferralCoins: {
       type: Number,
       default: 0,
     },
 
-    // 🎁 Referral system
+    // Referral system
     referralCode: {
       type: String,
       unique: true,
@@ -60,7 +60,7 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    // 📜 Coin transaction history
+    // Coin transaction history
     transactions: [
       {
         amount: Number,
@@ -70,7 +70,7 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // 🚀 Deployments
+    // Deployments
     deployments: [
       {
         name: String,
@@ -82,11 +82,27 @@ const userSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
+
+    // BAN SYSTEM — Added by the King
+    isBanned: {
+      type: Boolean,
+      default: false,
+    },
+    bannedAt: {
+      type: Date,
+    },
+    bannedBy: {
+      type: String, // admin email
+    },
+    banReason: {
+      type: String,
+      default: "No reason provided",
+    },
   },
   { timestamps: true }
 );
 
-// 🧩 Auto-generate unique referral code
+// Auto-generate unique referral code
 userSchema.pre("save", function (next) {
   if (!this.referralCode) {
     this.referralCode =
