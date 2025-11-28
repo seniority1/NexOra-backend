@@ -3,6 +3,7 @@ import { adminLogin, getAllUsers, addCoins,  } from "../controllers/adminControl
 import verifyAdmin from "../middleware/verifyAdmin.js";
 import { getGiftedUsers } from "../controllers/adminController.js";
 import { banUser, unbanUser } from "../controllers/adminController.js";
+import { getSecurityLogs } from "../controllers/adminController.js";
 
 const router = express.Router();
 
@@ -24,6 +25,11 @@ router.get("/gifted", verifyAdmin, getGiftedUsers);
 
 router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
+
+// ... your existing routes ...
+
+router.get("/security", verifyAdmin, getSecurityLogs);
+           
 
 
 
