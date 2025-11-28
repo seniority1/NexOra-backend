@@ -1,8 +1,9 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
-import LoginAudit from "../models/LoginAudit.js";        // ← FIXED
-import User from "../models/User.js";                  // ← FIXED (just in case)
+import LoginAudit from "../models/LoginAudit.js";
+import User from "../models/User.js";
+import GiftLog from "../models/GiftLog.js";        // ← NEW: Gift logging
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "1h";
@@ -18,6 +19,9 @@ function issueToken(admin) {
   );
 }
 
+/* ==========================================================
+   ADMIN LOGIN (unchanged – still unbreakable)
+   ========================================================== */
 export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
@@ -64,7 +68,6 @@ export const adminLogin = async (req, res) => {
     const isTrusted = admin.trustedDevices.some((d) => d.fingerprint === fingerprint);
     const isVeryFirstLoginEver = admin.trustedDevices.length === 0;
 
-    // Block any new device except the very first one in history
     if (!isTrusted && !isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await LoginAudit.create({
         ...auditBase,
@@ -77,7 +80,6 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    // Auto-trust only the very first device ever
     if (isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
@@ -92,7 +94,7 @@ export const adminLogin = async (req, res) => {
           },
         }
       );
-      console.log(`FIRST DEVICE AUTO-TRUSTED: \( {fingerprint} (IP: \){ip}`);
+      console.log(`FIRST DEVICE AUTO-TRUSTED: \( {fingerprint} (IP: \){ip})`);
     }
 
     await LoginAudit.create({
@@ -119,6 +121,9 @@ export const adminLogin = async (req, res) => {
   }
 };
 
+/* ==========================================================
+   GET ALL USERS (unchanged)
+   ========================================================== */
 export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({}, "name email coins createdAt").sort({ createdAt: -1 });
@@ -129,6 +134,9 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+/* ==========================================================
+   ADD COINS + LOG GIFT (updated – now logs every gift)
+   ========================================================== */
 export const addCoins = async (req, res) => {
   try {
     const { email, amount } = req.body;
@@ -137,16 +145,47 @@ export const addCoins = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    user.coins = (user.coins || 0) + Number(amount);
+    const addedAmount = Number(amount);
+    user.coins = (user.coins || 0) + addedAmount;
     await user.save();
+
+    // LOG THE GIFT
+    await GiftLog.create({
+      user: user._id,
+      name: user.name || "Unknown",
+      email: user.email,
+      amount: addedAmount,
+      date: new Date(),
+    });
 
     return res.json({
       success: true,
-      message: "Coins added",
-      coins: user.coins,
+      message: "Coins added successfully",
+      newBalance: user.coins,
     });
   } catch (err) {
     console.error("Add coins error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ==========================================================
+   NEW: GET ALL GIFTED USERS HISTORY
+   ========================================================== */
+export const getGiftedUsers = async (req, res) => {
+  try {
+    const gifts = await GiftLog.find()
+      .select("name email amount date")
+      .sort({ date: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      total: gifts.length,
+      gifts,
+    });
+  } catch (err) {
+    console.error("Get gifted users error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
