@@ -136,43 +136,33 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// ========================================
-// ✅ GET ALL GIFTED USERS
-// ========================================
+// GET ALL GIFTED USERS
 export const getGiftedUsers = async (req, res) => {
   try {
-    // Fetch all users who have at least one gift transaction
-    const users = await User.find({ "transactions.type": "gift" }, "name email transactions").sort({ "transactions.createdAt": -1 });
+    // Assuming you store gifted coins as type 'gift' in transactions
+    const giftedUsers = await User.find({ "transactions.type": "gift" })
+      .select("name email transactions")
+      .lean();
 
-    // Flatten the gifted transactions
-    const giftedUsers = [];
-    users.forEach(user => {
-      user.transactions.forEach(tx => {
-        if (tx.type === "gift") {
-          giftedUsers.push({
-            name: user.name,
+    // Flatten so each gift transaction becomes a row
+    const giftRows = [];
+    giftedUsers.forEach(user => {
+      user.transactions
+        .filter(tx => tx.type === "gift")
+        .forEach(tx => {
+          giftRows.push({
+            name: user.name || "User",
             email: user.email,
             amount: tx.amount,
             createdAt: tx.createdAt,
           });
-        }
-      });
+        });
     });
 
-    // Sort by most recent first
-    giftedUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    return res.json({
-      success: true,
-      total: giftedUsers.length,
-      users: giftedUsers,
-    });
+    res.json({ success: true, users: giftRows });
   } catch (err) {
-    console.error("Fetch gifted users error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error fetching gifted users",
-    });
+    console.error("Fetch gifted users failed:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
