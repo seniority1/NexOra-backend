@@ -4,6 +4,8 @@ import verifyAdmin from "../middleware/verifyAdmin.js";
 import { getGiftedUsers } from "../controllers/adminController.js";
 import { banUser, unbanUser } from "../controllers/adminController.js";
 import { getSecurityLogs } from "../controllers/adminController.js";
+import { sendBroadcast } from "../controllers/adminController.js";
+
 
 const router = express.Router();
 
@@ -29,6 +31,9 @@ router.post("/unban", verifyAdmin, unbanUser);
 // ... your existing routes ...
 
 router.get("/security", verifyAdmin, getSecurityLogs);
+
+router.post("/broadcast", verifyAdmin, sendBroadcast);
+
            
 
 
