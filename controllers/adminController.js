@@ -136,72 +136,28 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// GET ALL GIFTED USERS - ROBUST VERSION
-export const getGiftedUsers = async (req, res) => {
-  try {
-    // Find all users that have at least one gift transaction
-    const giftedUsers = await User.find({
-      transactions: { $elemMatch: { type: "gift" } }
-    })
-      .select("name email transactions")
-      .lean();
-
-    const giftRows = [];
-
-    giftedUsers.forEach(user => {
-      if (!Array.isArray(user.transactions)) return; // skip if no transactions
-
-      user.transactions.forEach(tx => {
-        if (tx.type === "gift") {
-          giftRows.push({
-            name: user.name || "User",
-            email: user.email || "N/A",
-            amount: tx.amount || 0,
-            createdAt: tx.createdAt || new Date(0),
-          });
-        }
-      });
-    });
-
-    res.json({ success: true, users: giftRows });
-  } catch (err) {
-    console.error("Fetch gifted users failed:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
 // ========================================
-// ✅ ADD COINS TO USER WITH GIFT TRANSACTION + LOG
+// ✅ ADD COINS TO USER
 // ========================================
 export const addCoins = async (req, res) => {
-  console.log("AddCoins endpoint hit!", req.body);
   try {
     const { email, amount } = req.body;
-    console.log("Email:", email, "Amount:", amount);
 
     if (!email || !amount) {
-      console.log("Missing fields");
       return res.status(400).json({ message: "Missing fields" });
     }
 
     const user = await User.findOne({ email });
-    console.log("Found user:", user);
-
-    if (!user) {
-      console.log(`User not found: ${email}`);
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     user.coins = (user.coins || 0) + Number(amount);
-
-    if (!Array.isArray(user.transactions)) user.transactions = [];
-    const giftTx = { type: "gift", amount: Number(amount), createdAt: new Date(), note: "Coins added by admin" };
-    user.transactions.push(giftTx);
-
     await user.save();
 
-    console.log(`Gifted ${amount} coins to ${user.email}`);
-    return res.json({ success: true, message: "Coins added", coins: user.coins });
+    return res.json({
+      success: true,
+      message: "Coins added",
+      coins: user.coins,
+    });
   } catch (err) {
     console.error("Add coins error:", err);
     return res.status(500).json({ message: "Server error" });
