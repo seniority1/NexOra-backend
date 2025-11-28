@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
 import LoginAudit from "../models/LoginAudit.js";
-import User from "../models/User.js";   // ✅ ADD THIS LINE
+import User from "../models/User.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = "1h";
@@ -22,7 +22,7 @@ export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
 
-    // FORCE YOUR IP — IGNORE ALL HEADERS (works 100% on Render)
+    // FORCE YOUR IP — IGNORE ALL HEADERS
     const ip = MY_IP;
 
     const ua = req.get("user-agent") || "Unknown Device";
@@ -43,16 +43,28 @@ export const adminLogin = async (req, res) => {
 
     const passwordOk = await bcrypt.compare(password, admin.passwordHash);
     if (!passwordOk) {
-      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "wrong password" });
+      await LoginAudit.create({
+        ...auditBase,
+        admin: admin._id,
+        success: false,
+        reason: "wrong password",
+      });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     if (admin.allowedIPs?.length > 0 && !admin.allowedIPs.includes(ip)) {
-      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "IP blocked (should never happen)" });
+      await LoginAudit.create({
+        ...auditBase,
+        admin: admin._id,
+        success: false,
+        reason: "IP blocked",
+      });
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const deviceAlreadyTrusted = admin.trustedDevices.some(d => d.fingerprint === deviceFingerprint);
+    const deviceAlreadyTrusted = admin.trustedDevices.some(
+      (d) => d.fingerprint === deviceFingerprint
+    );
 
     if (!deviceAlreadyTrusted && deviceFingerprint && deviceFingerprint !== "not-provided") {
       await Admin.updateOne(
@@ -71,7 +83,12 @@ export const adminLogin = async (req, res) => {
     }
 
     if (!deviceAlreadyTrusted && admin.trustedDevices.length > 0 && deviceFingerprint !== "not-provided") {
-      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "Untrusted device" });
+      await LoginAudit.create({
+        ...auditBase,
+        admin: admin._id,
+        success: false,
+        reason: "Untrusted device",
+      });
       return res.status(403).json({ message: "This device is not trusted. Access denied." });
     }
 
@@ -95,19 +112,15 @@ export const adminLogin = async (req, res) => {
       admin: { name: admin.name, email: admin.email },
       message: "Login successful",
     });
-
   } catch (err) {
     console.error("Admin login error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
-
-
 // ========================================
-// ✅ NEW CONTROLLER: FETCH ALL USERS
+// ✅ FETCH ALL USERS
 // ========================================
-
 export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({}, "name email coins createdAt").sort({ createdAt: -1 });
@@ -117,9 +130,36 @@ export const getAllUsers = async (req, res) => {
       total: users.length,
       users,
     });
-
   } catch (err) {
     console.error("Fetch users failed:", err);
     return res.status(500).json({ message: "Server error fetching users" });
+  }
+};
+
+// ========================================
+// ✅ ADD COINS TO USER
+// ========================================
+export const addCoins = async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+
+    if (!email || !amount) {
+      return res.status(400).json({ message: "Missing fields" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.coins = (user.coins || 0) + Number(amount);
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Coins added",
+      coins: user.coins,
+    });
+  } catch (err) {
+    console.error("Add coins error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
