@@ -2,6 +2,7 @@ import express from "express";
 import { adminLogin, getAllUsers, addCoins,  } from "../controllers/adminController.js";
 import verifyAdmin from "../middleware/verifyAdmin.js";
 import { getGiftedUsers } from "../controllers/adminController.js";
+import { banUser, unbanUser } from "../controllers/adminController.js";
 
 const router = express.Router();
 
@@ -20,6 +21,10 @@ router.get("/users", verifyAdmin, getAllUsers);
 router.post("/add-coins", verifyAdmin, addCoins);
 
 router.get("/gifted", verifyAdmin, getGiftedUsers);
+
+router.post("/ban", verifyAdmin, banUser);
+router.post("/unban", verifyAdmin, unbanUser);
+
 
 
 export default router;
