@@ -1,5 +1,6 @@
 import express from "express";
 import { adminLogin, getAllUsers, addCoins } from "../controllers/adminController.js";
+import { addCoins, getAllUsers, getGiftedUsers } from "../controllers/adminController.js"; // <-- add getGiftedUsers
 import verifyAdmin from "../middleware/verifyAdmin.js";
 
 const router = express.Router();
