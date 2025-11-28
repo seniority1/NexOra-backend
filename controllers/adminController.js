@@ -136,27 +136,31 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// GET ALL GIFTED USERS
+// GET ALL GIFTED USERS - ROBUST VERSION
 export const getGiftedUsers = async (req, res) => {
   try {
-    // Assuming you store gifted coins as type 'gift' in transactions
-    const giftedUsers = await User.find({ "transactions.type": "gift" })
+    // Find all users that have at least one gift transaction
+    const giftedUsers = await User.find({
+      transactions: { $elemMatch: { type: "gift" } }
+    })
       .select("name email transactions")
       .lean();
 
-    // Flatten so each gift transaction becomes a row
     const giftRows = [];
+
     giftedUsers.forEach(user => {
-      user.transactions
-        .filter(tx => tx.type === "gift")
-        .forEach(tx => {
+      if (!Array.isArray(user.transactions)) return; // skip if no transactions
+
+      user.transactions.forEach(tx => {
+        if (tx.type === "gift") {
           giftRows.push({
             name: user.name || "User",
-            email: user.email,
-            amount: tx.amount,
-            createdAt: tx.createdAt,
+            email: user.email || "N/A",
+            amount: tx.amount || 0,
+            createdAt: tx.createdAt || new Date(0),
           });
-        });
+        }
+      });
     });
 
     res.json({ success: true, users: giftRows });
