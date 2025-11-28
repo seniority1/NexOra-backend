@@ -199,53 +199,67 @@ res.status(500).json({ success: false, message: "Resend failed." });
 };
 
 /* 🔐 LOGIN (Now returns JWT token) */
+/* LOGIN (Now blocks banned users) */
 export const login = async (req, res) => {
-try {
-const { email, password } = req.body;
-console.log("\n🟢 [LOGIN ATTEMPT]");
-console.log("Email:", email);
+  try {
+    const { email, password } = req.body;
+    console.log("\n[LOGIN ATTEMPT]");
+    console.log("Email:", email);
 
-if (!email || !password) {  
-  console.log("❌ Missing fields");  
-  return res.status(400).json({ message: "Email and password required." });  
-}  
+    if (!email || !password) {
+      console.log("Missing fields");
+      return res.status(400).json({ message: "Email and password required." });
+    }
 
-const user = await User.findOne({ email });  
-if (!user) {  
-  console.log("❌ User not found:", email);  
-  return res.status(404).json({ message: "User not found." });  
-}  
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("User not found:", email);
+      return res.status(404).json({ message: "User not found." });
+    }
 
-if (!user.verified) {  
-  console.log("⚠️ Unverified user:", email);  
-  return res.status(403).json({ message: "Please verify your account first." });  
-}  
+    // BLOCK BANNED USERS
+    if (user.isBanned) {
+      console.log("BANNED USER TRIED TO LOGIN:", email);
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been suspended.",
+        reason: user.banReason || "No reason provided",
+      });
+    }
 
-const isMatch = await bcrypt.compare(password, user.password);  
-if (!isMatch) {  
-  console.log("❌ Incorrect password for:", email);  
-  return res.status(400).json({ message: "Invalid credentials." });  
-}  
+    if (!user.verified) {
+      console.log("Unverified user:", email);
+      return res.status(403).json({ message: "Please verify your account first." });
+    }
 
-// 🧾 Generate JWT Token  
-const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });  
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      console.log("Incorrect password for:", email);
+      return res.status(400).json({ message: "Invalid credentials." });
+    }
 
-console.log("✅ Login successful for:", email);  
+    // Generate JWT Token
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-res.status(200).json({  
-  success: true,  
-  message: "Login successful.",  
-  token,  
-  user: {  
-    name: user.name,  
-    email: user.email,  
-  },  
-});
+    console.log("Login successful for:", email);
 
-} catch (err) {
-console.error("❌ Login Error:", err.message);
-res.status(500).json({ success: false, message: "Login failed." });
-}
+    res.status(200).json({
+      success: true,
+      message: "Login successful.",
+      token,
+      user: {
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    console.error("Login Error:", err.message);
+    res.status(500).json({ success: false, message: "Login failed." });
+  }
 };
 
 /* 🧠 FORGOT PASSWORD — Send reset code */
@@ -340,22 +354,37 @@ res.status(500).json({ success: false, message: "Password reset failed." });
 };
 
 /* 🧩 AUTH MIDDLEWARE */
-export const protect = (req, res, next) => {
-try {
-const authHeader = req.headers.authorization;
-if (!authHeader || !authHeader.startsWith("Bearer ")) {
-return res.status(401).json({ message: "Not authorized, no token." });
-}
+/* AUTH MIDDLEWARE — Now blocks banned users */
+export const protect = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Not authorized, no token." });
+    }
 
-const token = authHeader.split(" ")[1];  
-const decoded = jwt.verify(token, JWT_SECRET);  
-req.user = decoded;  
-next();
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
 
-} catch (err) {
-console.error("❌ Auth Middleware Error:", err.message);
-res.status(401).json({ message: "Invalid or expired token." });
-}
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(401).json({ message: "User not found." });
+    }
+
+    // BLOCK BANNED USERS FROM ACCESSING ANY PROTECTED ROUTE
+    if (user.isBanned) {
+      return res.status(403).json({
+        success: false,
+        message: "Account suspended. Access denied.",
+        reason: user.banReason || "No reason provided",
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error("Auth Middleware Error:", err.message);
+    res.status(401).json({ message: "Invalid or expired token." });
+  }
 };
 
 /* 🧑‍💼 PROFILE — Protected Route */
