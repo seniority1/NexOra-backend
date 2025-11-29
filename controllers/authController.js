@@ -2,7 +2,10 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { Resend } from "resend";
-import { alertNewUser, teleAlert } from "../utils/teleAlert.js";  // ← FIXED: added teleAlert
+import { 
+  alertNewUser, 
+  alertReferralPending 
+} from "../utils/teleAlert.js";  // ← CLEAN & POWERFUL
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const JWT_SECRET = process.env.JWT_SECRET || "nexora_secret_key";
@@ -47,8 +50,9 @@ export const register = async (req, res) => {
     });  
 
     await newUser.save();  
-    console.log("User saved successfully:", newUser._id);  
+    console.log("User saved:", newUser._id);  
 
+    // REFERRAL PENDING REWARD + ALERT
     if (referrer) {  
       referrer.pendingReferralCoins = (referrer.pendingReferralCoins || 0) + 100;  
       referrer.transactions.push({  
@@ -58,7 +62,13 @@ export const register = async (req, res) => {
         date: new Date(),  
       });  
       await referrer.save();  
-      console.log("Pending referral coins added for", referrer.email);  
+
+      // PENDING ALERT — YOUR ARMY JUST GREW
+      try {
+        await alertReferralPending(referrer.email, name, email);
+      } catch (e) {
+        console.log("Referral pending alert failed (not critical)");
+      }
     }  
 
     await sendEmail({  
@@ -72,27 +82,11 @@ export const register = async (req, res) => {
       `,  
     });  
 
-    // ——— EMPIRE ALERTS ———
+    // NEW USER ALERT
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
-
-    // New user alert
     try { 
-      alertNewUser(newUser, ip, req.headers['user-agent'] || "unknown"); 
+      await alertNewUser(newUser, ip, req.headers['user-agent'] || "unknown"); 
     } catch(e) {}
-
-    // Referral success alert (clean & simple)
-    if (referrer) {
-      try {
-        teleAlert(`
-REFERRAL SUCCESS
-<b>New User:</b> \( {name} ( \){email})
-<b>Referred by:</b> ${referrer.email}
-<b>Reward:</b> +100 pending coins
-<b>Time:</b> ${new Date().toLocaleString()}
-Empire expands
-        `.trim());
-      } catch(e) {}
-    }
 
     res.status(201).json({  
       success: true,  
@@ -108,6 +102,7 @@ Empire expands
     });
   }
 };
+
 
 /* ✅ VERIFY CODE */
 export const verifyCode = async (req, res) => {
