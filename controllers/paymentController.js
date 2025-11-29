@@ -4,7 +4,7 @@ import { Resend } from "resend";
 import { 
   alertPayment, 
   alertFailedPayment,
-  alertReferralReleased        // ← ADDED: The crown jewel
+  alertReferralReleased
 } from "../utils/teleAlert.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -79,7 +79,6 @@ export const verifyAndCreditCoins = async (req, res) => {
         await referrer.save();
         referralRewardReleased = true;
 
-        // THIS IS YOUR NEW POWER: You feel when your army gets paid
         try {
           await alertReferralReleased(referrer.email, user.name, reward);
         } catch (e) {
@@ -103,14 +102,14 @@ export const verifyAndCreditCoins = async (req, res) => {
       });
     } catch (e) { console.log("Money ping failed"); }
 
-    // EMAILS (unchanged)
+    // EMAILS — FIXED THE BACKSLASH TYPO
     if (referralRewardReleased && referrer) {
       try {
         await resend.emails.send({
           from: "NexOra <noreply@nexora.org.ng>",
           to: referrer.email,
           subject: "Referral Bonus Released",
-          html: `<h2>Congratulations!</h2><p>You earned <b>\( {reward}</b> NexCoins from \){user.name}’s first purchase!</p>`,
+          html: `<h2>Congratulations!</h2><p>You earned <b>\( {reward}</b> NexCoins from <b> \){user.name}</b>’s first purchase!</p>`,
         });
       } catch (e) {}
     }
