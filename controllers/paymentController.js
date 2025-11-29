@@ -1,13 +1,16 @@
 import fetch from "node-fetch";
 import User from "../models/User.js";
 import { Resend } from "resend";
-import { alertPayment } from "../utils/teleAlert.js";  // ← THE GOLDEN LINE
+import { 
+  alertPayment, 
+  alertFailedPayment 
+} from "../utils/teleAlert.js";  // ← BOTH LOADED UPFRONT = BULLETPROOF
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const verifyAndCreditCoins = async (req, res) => {
   try {
-    const { email, coins, transaction_id } = req.body;
+    const { email, coins, transaction_id, name } = req.body;
 
     if (!email || !transaction_id) {
       return res.status(400).json({
@@ -15,6 +18,10 @@ export const verifyAndCreditCoins = async (req, res) => {
         message: "Missing required fields",
       });
     }
+
+    // GET IP & DEVICE ONCE (used in both success & failure)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
+    const device = req.headers['user-agent'] || "unknown device";
 
     // VERIFY PAYMENT FROM FLUTTERWAVE
     const verifyRes = await fetch(
@@ -28,20 +35,38 @@ export const verifyAndCreditCoins = async (req, res) => {
 
     const verifyData = await verifyRes.json();
 
+    // FAILED PAYMENT → RED FRAUD ALERT
     if (
       verifyData.status !== "success" ||
-      verifyData.data.status !== "successful"
+      verifyData.data?.status !== "successful"
     ) {
+      try {
+        await alertFailedPayment({
+          name: name || "Unknown",
+          email,
+          ip,
+          device,
+          coins: coins || 0,
+          amountNGN: verifyData.data?.amount || 0,
+          reason: verifyData.data?.processor_response || verifyData.message || "verification_failed",
+          transaction_id
+        });
+        console.log("FRAUD ATTEMPT BLOCKED & REPORTED:", email, ip);
+      } catch (e) {
+        console.log("Failed payment alert skipped (still blocked)");
+      }
+
       return res.status(400).json({
         success: false,
         message: "Invalid or failed transaction",
       });
     }
 
-    // FIND USER
+    // SUCCESS PATH — FIND USER
     const user = await User.findOne({ email });
-    if (!user)
+    if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
+    }
 
     const purchasedCoins = parseInt(coins);
     const previousBalance = user.coins || 0;
@@ -75,39 +100,35 @@ export const verifyAndCreditCoins = async (req, res) => {
 
     await user.save();
 
-    // GET REAL IP & DEVICE
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
-    const device = req.headers['user-agent'] || "unknown device";
-
-    // ROYAL MONEY ALERT — THIS IS WHAT MAKES KINGS SMILE
+    // SUCCESS → GREEN MONEY ALERT
     try {
       await alertPayment({
-        name: user.name,
+        name: user.name || name || "User",
         email: user.email,
         ip,
         device,
         coins: purchasedCoins,
         newBalance: user.coins,
-        amountNGN: verifyData.data.amount,  // actual Naira paid
+        amountNGN: verifyData.data.amount,
         status: "SUCCESS"
       });
+      console.log("MONEY INCOMING — Empire grows richer");
     } catch (e) {
-      console.log("Money ping failed (but payment went through)");
+      console.log("Money ping failed (payment still processed)");
     }
 
-    // REFERRAL REWARD EMAIL (unchanged)
+    // EMAILS (unchanged)
     if (referralRewardReleased && referrer) {
       try {
         await resend.emails.send({
           from: "NexOra <noreply@nexora.org.ng>",
           to: referrer.email,
           subject: "Referral Bonus Released",
-          html: `<h2>Congratulations!</h2><p>You earned <b>${referrer.pendingReferralCoins}</b> NexCoins!</p>`,
+          html: `<h2>Congratulations!</h2><p>You earned <b>${reward}</b> NexCoins!</p>`,
         });
-      } catch (emailErr) { console.error("Referral email failed:", emailErr.message); }
+      } catch (e) {}
     }
 
-    // PURCHASE EMAIL (unchanged)
     try {
       await resend.emails.send({
         from: "NexOra <noreply@nexora.org.ng>",
@@ -115,7 +136,7 @@ export const verifyAndCreditCoins = async (req, res) => {
         subject: "NexCoins Purchase Successful",
         html: `<h2>Purchase Successful!</h2><p>You now have <b>${user.coins}</b> NexCoins</p>`,
       });
-    } catch (emailErr) { console.error("Purchase email failed:", emailErr.message); }
+    } catch (e) {}
 
     return res.json({
       success: true,
