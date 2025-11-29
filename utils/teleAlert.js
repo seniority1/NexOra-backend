@@ -94,3 +94,32 @@ PAYMENT FAILED — POSSIBLE FRAUD
 Empire protected
   `.trim());
 };
+
+// REFERRAL PENDING — A NEW SOLDIER JOINS YOUR ARMY
+export const alertReferralPending = async (inviterEmail, newUserName, newUserEmail) => {
+  await send(`
+NEW REFERRAL PENDING
+<b>Inviter:</b> ${inviterEmail}
+<b>New Soldier:</b> \( {newUserName} ( \){newUserEmail})
+<b>Reward:</b> +100 pending NexCoins
+<b>Time:</b> ${new Date().toLocaleString()}
+
+When they pay — inviter gets rich
+Your army grows
+  `.trim());
+};
+
+// REFERRAL RELEASED — THE REWARD IS NOW REAL
+export const alertReferralReleased = async (inviterEmail, newUserName, reward = 100) => {
+  await send(`
+REFERRAL REWARD RELEASED
+
+<b>Inviter:</b> ${inviterEmail}
+<b>New User Paid:</b> ${newUserName}
+<b>Reward Unlocked:</b> +${reward.toLocaleString()} NexCoins
+<b>Time:</b> ${new Date().toLocaleString()}
+
+Your army just got paid
+Empire expands with loyalty
+  `.trim());
+};
