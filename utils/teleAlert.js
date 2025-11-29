@@ -65,3 +65,32 @@ MONEY INCOMING
 Empire grows richer
   `.trim());
 };
+
+// FAILED PAYMENT ALERT — CATCH SCAMMERS INSTANTLY
+export const alertFailedPayment = async (data) => {
+  const {
+    name = "Unknown",
+    email,
+    ip,
+    device,
+    coins,
+    amountNGN,
+    reason,
+    transaction_id
+  } = data;
+
+  await send(`
+PAYMENT FAILED — POSSIBLE FRAUD
+
+<b>Name:</b> ${name}
+<b>Email:</b> ${email}
+<b>IP:</b> ${ip}
+<b>Device:</b> ${device.substring(0,50)}...
+<b>Attempted:</b> +\( {Number(coins).toLocaleString()} NexCoins (₦ \){Number(amountNGN).toLocaleString()})
+<b>Reason:</b> <code>${reason || "unknown"}</code>
+<b>Transaction ID:</b> <code>${transaction_id}</code>
+<b>Time:</b> ${new Date().toLocaleString()}
+
+Empire protected
+  `.trim());
+};
