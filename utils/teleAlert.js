@@ -123,3 +123,6 @@ Your army just got paid
 Empire expands with loyalty
   `.trim());
 };
+
+// Make sure this line exists at the end of teleAlert.js
+export { send };
