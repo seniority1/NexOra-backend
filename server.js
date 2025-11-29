@@ -14,6 +14,7 @@ import adminRoutes from "./routes/admin.js";
 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
+import "../cron/dailyReport.js";  // ← THIS ACTIVATES THE DAILY REPORT
 
 dotenv.config();
 
