@@ -11,10 +11,10 @@ import paymentRoutes from "./routes/payment.js";
 import deployRoutes from "./routes/deploy.js";
 import referralRoutes from "./routes/referral.js";
 import adminRoutes from "./routes/admin.js";
+import "./cron/dailyReport.js";    // ← THIS IS THE TRUTH
 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
-import "../cron/dailyReport.js";  // ← THIS ACTIVATES THE DAILY REPORT
 
 dotenv.config();
 
