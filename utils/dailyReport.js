@@ -1,69 +1,70 @@
-// utils/dailyReport.js
+// src/utils/dailyReport.js
 import User from "../models/User.js";
-import { send } from "./teleAlert.js";  // we reuse the same send() function
+import { send } from "./teleAlert.js";  // ← This will now work
 
 export const sendDailyRevenueReport = async () => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Midnight today (Lagos time already handled by server timezone)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
 
-    // Find all successful purchases from yesterday
-    const usersWithPurchases = await User.aggregate([
-      {
-        $match: {
-          "transactions.type": "purchase",
-          "transactions.date": { $gte: today, $lt: tomorrow }
-        }
-      },
+    const startOfTomorrow = new Date(startOfDay);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    // Get all purchases from YESTERDAY
+    const purchases = await User.aggregate([
+      { $match: { "transactions.type": "purchase" } },
       { $unwind: "$transactions" },
       {
         $match: {
           "transactions.type": "purchase",
-          "transactions.date": { $gte: today, $lt: tomorrow }
+          "transactions.date": { $gte: startOfDay, $lt: startOfTomorrow }
         }
       },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: "$transactions.amountNGN" },     // you'll add this field soon
+          totalRevenue: { $sum: { $ifNull: ["$transactions.amountNGN", 0] } },
           totalCoinsSold: { $sum: "$transactions.amount" },
           purchaseCount: { $sum: 1 },
-          purchasers: { $addToSet: "$email" },
-          topEarner: { $max: { email: "$email", amount: "$transactions.amountNGN" } }
+          uniqueBuyers: { $addToSet: "$email" }
         }
       }
     ]);
 
     const newUsersToday = await User.countDocuments({
-      createdAt: { $gte: today, $lt: tomorrow }
+      createdAt: { $gte: startOfDay, $lt: startOfTomorrow }
     });
 
-    const referralsReleased = await User.countDocuments({
+    const referralRewardsToday = await User.countDocuments({
       "transactions.type": "reward",
-      "transactions.date": { $gte: today, $lt: tomorrow }
+      "transactions.date": { $gte: startOfDay, $lt: startOfTomorrow }
     });
 
-    const data = usersWithPurchases[0] || {
+    const stats = purchases[0] || {
       totalRevenue: 0,
       totalCoinsSold: 0,
-      purchaseCount: 0
+      purchaseCount: 0,
+      uniqueBuyers: []
     };
 
     await send(`
 DAILY REVENUE REPORT — 8:00 AM
 
-<b>Date:</b> ${today.toDateString()}
-<b>Total Purchases:</b> ${data.purchaseCount}
-<b>Total Revenue:</b> ₦${data.totalRevenue?.toLocaleString() || 0}
-<b>NexCoins Sold:</b> ${data.totalCoinsSold?.toLocaleString() || 0}
+<b>Date:</b> ${startOfDay.toDateString()}
+<b>Total Purchases:</b> ${stats.purchaseCount}
+<b>Total Revenue:</b> ₦${(stats.totalRevenue || 0).toLocaleString()}
+<b>NexCoins Sold:</b> ${(stats.totalCoinsSold || 0).toLocaleString()}
+<b>Unique Buyers:</b> ${stats.uniqueBuyers.length}
 <b>New Users:</b> ${newUsersToday}
-<b>Referral Rewards Paid:</b> \( {referralsReleased} (+ \){(referralsReleased * 100).toLocaleString()} coins)
+<b>Referral Rewards Released:</b> \( {referralRewardsToday} (+ \){(referralRewardsToday * 100).toLocaleString()} coins)
 
 Empire grows richer while you slept
     `.trim());
+
+    console.log("Daily revenue report sent successfully");
+
   } catch (err) {
-    console.log("Daily report failed:", err.message);
+    console.error("Daily report failed:", err.message);
   }
 };
