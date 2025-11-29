@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { Resend } from "resend";
+import Ban from "../models/Ban.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const JWT_SECRET = process.env.JWT_SECRET || "nexora_secret_key";
@@ -198,28 +199,57 @@ res.status(500).json({ success: false, message: "Resend failed." });
 }
 };
 
-/* 🔐 LOGIN (Now returns JWT token) */
-/* LOGIN (Now blocks banned users) */
+/* LOGIN — NOW WITH EMAIL BAN + PERMANENT DEVICE/IP BAN */
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, fingerprint } = req.body;  // fingerprint from frontend
+
+    // Get real client IP (works on Render, Vercel, etc.)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
+               req.ip?.replace('::ffff:', '') || 
+               req.socket?.remoteAddress;
+
     console.log("\n[LOGIN ATTEMPT]");
     console.log("Email:", email);
+    console.log("IP:", ip);
+    console.log("Fingerprint:", fingerprint ? fingerprint.slice(0, 20) + "..." : "missing");
 
+    // 1. MISSING FIELDS
     if (!email || !password) {
-      console.log("Missing fields");
       return res.status(400).json({ message: "Email and password required." });
     }
 
+    // 2. PERMANENT DEVICE/IP BAN CHECK — NO MERCY
+    if (ip || fingerprint) {
+      const permBan = await Ban.findOne({
+        $or: [
+          { ip: ip },
+          { fingerprint: fingerprint }
+        ]
+      });
+
+      if (permBan) {
+        console.log("PERMANENT BAN ENFORCED → IP:", ip, "| Fingerprint:", fingerprint?.slice(0,20));
+        return res.status(403).json({
+          success: false,
+          message: "This device has been permanently banned from NexOra.",
+          reason: permBan.reason || "Repeated violation of terms",
+          type: "permanent_ban",
+          bannedAt: permBan.bannedAt
+        });
+      }
+    }
+
+    // 3. FIND USER
     const user = await User.findOne({ email });
     if (!user) {
       console.log("User not found:", email);
       return res.status(404).json({ message: "User not found." });
     }
 
-    // BLOCK BANNED USERS
+    // 4. EMAIL-LEVEL BAN (your original system)
     if (user.isBanned) {
-      console.log("BANNED USER TRIED TO LOGIN:", email);
+      console.log("EMAIL-BANNED USER DENIED:", email);
       return res.status(403).json({
         success: false,
         message: "Your account has been suspended.",
@@ -227,41 +257,42 @@ export const login = async (req, res) => {
       });
     }
 
+    // 5. VERIFICATION CHECK
     if (!user.verified) {
-      console.log("Unverified user:", email);
       return res.status(403).json({ message: "Please verify your account first." });
     }
 
+    // 6. PASSWORD CHECK
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log("Incorrect password for:", email);
+      console.log("Wrong password for:", email);
       return res.status(400).json({ message: "Invalid credentials." });
     }
 
-    // Generate JWT Token
+    // 7. SUCCESS — ISSUE TOKEN
     const token = jwt.sign(
       { id: user._id, email: user.email },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    console.log("Login successful for:", email);
+    console.log("LOGIN SUCCESS:", email, "| IP:", ip);
 
-    res.status(200).json({
+    return res.json({
       success: true,
       message: "Login successful.",
       token,
       user: {
         name: user.name,
         email: user.email,
+        coins: user.coins || 0
       },
     });
   } catch (err) {
     console.error("Login Error:", err.message);
-    res.status(500).json({ success: false, message: "Login failed." });
+    return res.status(500).json({ success: false, message: "Login failed." });
   }
 };
-
 /* 🧠 FORGOT PASSWORD — Send reset code */
 export const forgotPassword = async (req, res) => {
 try {
