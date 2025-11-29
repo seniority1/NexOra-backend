@@ -2,100 +2,111 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { Resend } from "resend";
+import { alertNewUser, teleAlert } from "../utils/teleAlert.js";  // ← FIXED: added teleAlert
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const JWT_SECRET = process.env.JWT_SECRET || "nexora_secret_key";
 
-/* 🪄 REGISTER — Create new user, referral support, and send verification code */
 export const register = async (req, res) => {
-try {
-const { name, email, password, referralCode } = req.body;
-console.log("\n🟢 [REGISTER ATTEMPT]");
-console.log("Name:", name);
-console.log("Email:", email);
-console.log("Referral Used:", referralCode || "none");
+  try {
+    const { name, email, password, referralCode, fingerprint } = req.body;
+    
+    console.log("\n[REGISTER ATTEMPT]");
+    console.log("Name:", name);
+    console.log("Email:", email);
+    console.log("Referral Used:", referralCode || "none");
 
-// 1️⃣ Validate required fields  
-if (!name || !email || !password) {  
-  return res.status(400).json({ message: "All fields are required." });  
-}  
+    if (!name || !email || !password) {  
+      return res.status(400).json({ message: "All fields are required." });  
+    }  
 
-// 2️⃣ Check if email already exists  
-const existingUser = await User.findOne({ email });  
-if (existingUser) {  
-  return res.status(400).json({ message: "Email already registered." });  
-}  
+    const existingUser = await User.findOne({ email });  
+    if (existingUser) {  
+      return res.status(400).json({ message: "Email already registered." });  
+    }  
 
-// 3️⃣ Validate referral code (optional)  
-let referrer = null;  
-if (referralCode && referralCode.trim() !== "") {  
-  referrer = await User.findOne({ referralCode });  
-  if (!referrer) {  
-    return res.status(400).json({ message: "Invalid referral code." });  
-  }  
-}  
+    let referrer = null;  
+    if (referralCode && referralCode.trim() !== "") {  
+      referrer = await User.findOne({ referralCode });  
+      if (!referrer) {  
+        return res.status(400).json({ message: "Invalid referral code." });  
+      }  
+    }  
 
-// 4️⃣ Hash password securely  
-const hashedPassword = await bcrypt.hash(password, 10);  
+    const hashedPassword = await bcrypt.hash(password, 10);  
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();  
+    const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-// 5️⃣ Generate secure 6-digit verification code  
-const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();  
-const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes  
+    const newUser = new User({  
+      name,  
+      email,  
+      password: hashedPassword,  
+      verificationCode,  
+      codeExpiresAt,  
+      referredBy: referrer ? referralCode : null,  
+    });  
 
-// 6️⃣ Create new user (stores referralCode ONLY if valid)  
-const newUser = new User({  
-  name,  
-  email,  
-  password: hashedPassword,  
-  verificationCode,  
-  codeExpiresAt,  
-  referredBy: referrer ? referralCode : null,  
-});  
+    await newUser.save();  
+    console.log("User saved successfully:", newUser._id);  
 
-await newUser.save();  
-console.log("✅ User saved successfully:", newUser._id);  
+    if (referrer) {  
+      referrer.pendingReferralCoins = (referrer.pendingReferralCoins || 0) + 100;  
+      referrer.transactions.push({  
+        amount: 100,  
+        type: "reward",  
+        description: `Referral reward pending for inviting ${name}`,  
+        date: new Date(),  
+      });  
+      await referrer.save();  
+      console.log("Pending referral coins added for", referrer.email);  
+    }  
 
-// 7️⃣ If referral used, add pending coins to referrer  
-if (referrer) {  
-  referrer.pendingReferralCoins = (referrer.pendingReferralCoins || 0) + 100;  
+    await sendEmail({  
+      to: email,  
+      subject: "Your NexOra Verification Code",  
+      html: `  
+        <h2>Welcome to NexOra, ${name}!</h2>  
+        <p>Your verification code:</p>  
+        <h1 style="color:#00ff88;">${verificationCode}</h1>  
+        <p>Expires in <b>10 minutes</b>.</p>  
+      `,  
+    });  
 
-  referrer.transactions.push({  
-    amount: 100,  
-    type: "reward",  
-    description: `Referral reward pending for inviting ${name}`,  
-    date: new Date(),  
-  });  
+    // ——— EMPIRE ALERTS ———
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
 
-  await referrer.save();  
-  console.log("🎁 Pending referral coins added for", referrer.email);  
-}  
+    // New user alert
+    try { 
+      alertNewUser(newUser, ip, req.headers['user-agent'] || "unknown"); 
+    } catch(e) {}
 
-// 8️⃣ Send verification email  
-await sendEmail({  
-  to: email,  
-  subject: "Your NexOra Verification Code",  
-  html: `  
-    <h2>Welcome to NexOra, ${name}!</h2>  
-    <p>Your verification code:</p>  
-    <h1 style="color:#00ff88;">${verificationCode}</h1>  
-    <p>Expires in <b>10 minutes</b>.</p>  
-  `,  
-});  
+    // Referral success alert (clean & simple)
+    if (referrer) {
+      try {
+        teleAlert(`
+REFERRAL SUCCESS
+<b>New User:</b> \( {name} ( \){email})
+<b>Referred by:</b> ${referrer.email}
+<b>Reward:</b> +100 pending coins
+<b>Time:</b> ${new Date().toLocaleString()}
+Empire expands
+        `.trim());
+      } catch(e) {}
+    }
 
-// 9️⃣ Respond to client  
-res.status(201).json({  
-  success: true,  
-  message: "Registration successful! Verification code sent.",  
-});
+    res.status(201).json({  
+      success: true,  
+      message: "Registration successful! Verification code sent.",  
+    });
 
-} catch (err) {
-console.error("❌ Register Error:", err.message);
-res.status(500).json({
-success: false,
-message: "Registration failed.",
-error: err.message,
-});
-}
+  } catch (err) {
+    console.error("Register Error:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Registration failed.",
+      error: err.message,
+    });
+  }
 };
 
 /* ✅ VERIFY CODE */
