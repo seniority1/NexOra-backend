@@ -12,6 +12,7 @@ import deployRoutes from "./routes/deploy.js";
 import referralRoutes from "./routes/referral.js";
 import adminRoutes from "./routes/admin.js";
 import "./cron/dailyReport.js";    // ← THIS IS THE TRUTH
+import botRoutes from "./routes/bot.js";  // ← ADD THIS
 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
@@ -54,6 +55,7 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/deploy", deployRoutes);
 app.use("/api/referral", referralRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/bot", botRoutes);  // ← ADD THIS
 
 // MongoDB Connection + ONE-TIME ADMIN SETUP + HARD-CODED IP
 mongoose
