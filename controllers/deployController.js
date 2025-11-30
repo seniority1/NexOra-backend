@@ -1,114 +1,57 @@
-// controllers/deploymentController.js  →  REPLACE YOUR CURRENT startBot WITH THIS
-import fs from "fs";
-import path from "path";
-import { exec } from "child_process";
-import util from "util";
+// src/controllers/botDeployController.js
+import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
-const execAsync = util.promisify(exec);
+const VPS_URL = "https://156.232.88.100:3001";  // your TrueHost VPS
+const SECRET_KEY = "NexOraEmpire2025King";     // change this to anything secret
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export const startBot = async (req, res) => {
+export const deployBotToVPS = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { ownerNumber, plan } = req.body;
+    const { userId } = req.body; // or req.user.id if using auth middleware
+    const { phoneNumber, days } = req.body;
 
-    if (!ownerNumber || !plan)
-      return res.status(400).json({ success: false, message: "Missing data" });
-
+    // 1. Deduct coins (you already have this logic)
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
-    if ((user.coins || 0) < plan)
-      return res.status(400).json({ success: false, message: "Not enough coins" });
+    const cost = days === 7 ? 500 : days === 14 ? 1000 : days === 21 ? 1500 : 2000;
+    if (user.coins < cost) return res.status(400).json({ message: "Not enough coins" });
 
-    // Deduct coins
-    user.coins -= plan;
+    user.coins -= cost;
     await user.save();
 
-    // Calculate days
-    const planDays = plan === 500 ? 7 : plan === 1000 ? 14 : plan === 1500 ? 21 : 28;
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + planDays);
-
-    // Unique folder
-    const timestamp = Date.now();
-    const folderName = `\( {ownerNumber.replace(/[^0-9]/g, "")}_ \){timestamp}`;
-    const botPath = path.resolve(process.cwd(), "bots", folderName);
-
-    fs.mkdirSync(botPath, { recursive: true });
-
-    // Clone repo
-    await execAsync(`git clone https://github.com/seniority1/NexOra.git "${botPath}" --depth=1`);
-
-    // Install deps (fast on Render)
-    await execAsync(`npm install --omit=dev`, { cwd: botPath });
-
-    // Write .env
-    fs.writeFileSync(
-      path.join(botPath, ".env"),
-      `WHATSAPP_NUMBER=\( {ownerNumber}\nUSER_ID= \){userId}\nDEPLOYMENT_ID=\( {folderName}\nEXPIRY_TIMESTAMP= \){expiryDate.getTime()}`
+    // 2. Tell VPS to spawn the bot
+    const vpsResponse = await axios.post(
+      `${VPS_URL}/deploy`,
+      {
+        userId: userId.toString(),
+        phoneNumber: phoneNumber.replace(/[^\d+]/g, ""),
+        days,
+        secret: SECRET_KEY
+      },
+      { timeout: 90000 } // 90 seconds max
     );
 
-    // Rename bot.js → index.js (if needed, some Render setups expect index.js)
-    const botFile = path.join(botPath, "bot.js");
-    const indexFile = path.join(botPath, "index.js");
-    if (fs.existsSync(botFile) && !fs.existsSync(indexFile)) {
-      fs.renameSync(botFile, indexFile);
-    }
+    if (!vpsResponse.data.success) throw new Error(vpsResponse.data.message);
 
-    // Start with PM2 (Render allows it in background)
-    const pm2Name = `nexora_${folderName}`;
-    await execAsync(`pm2 delete "${pm2Name}" --silent || true`);
-    await execAsync(`pm2 start "\( {indexFile}" --name " \){pm2Name}" --update-env --no-autorestart`);
-
-    // Save deployment
-    const deployment = await Deployment.create({
+    // 3. Save deployment record
+    await Deployment.create({
       user: userId,
-      ownerNumber,
-      plan,
-      folderName,
-      pm2Name,
-      status: "starting",
-      expiryDate,
+      phoneNumber,
+      days,
+      pairingCode: vpsResponse.data.code,
+      status: "waiting_pairing",
+      vpsFolder: vpsResponse.data.folder,
+      expiryDate: new Date(Date.now() + days * 86400000)
     });
 
-    // Wait for pairing.json (max 55 seconds)
-    const pairingFile = path.join(botPath, "pairing.json");
-    let attempts = 0;
-    while (attempts < 55) {
-      if (fs.existsSync(pairingFile)) {
-        const data = JSON.parse(fs.readFileSync(pairingFile, "utf8"));
-        deployment.status = "waiting_for_scan";
-        await deployment.save();
-
-        return res.json({
-          success: true,
-          message: "Bot started! Enter this code in WhatsApp",
-          pairingCode: data.code,
-          deploymentId: deployment._id,
-          expiresInDays: planDays,
-        });
-      }
-      await sleep(1000);
-      attempts++;
-    }
-
-    // No code yet → still okay
-    deployment.status = "waiting_for_scan";
-    await deployment.save();
     return res.json({
       success: true,
-      message: "Bot is starting… Open WhatsApp → Linked Devices → Link with phone number",
-      pairingCode: null,
-      deploymentId: deployment._id,
-      expiresInDays: planDays,
+      pairingCode: vpsResponse.data.codeFormatted,
+      message: "Bot deploying… Type this code in WhatsApp"
     });
-  } catch (err) {
-    console.error("Deploy error:", err);
-    return res.status(500).json({ success: false, message: err.message || "Server error" });
+
+  } catch (error) {
+    console.error("VPS Deploy Error:", error.message);
+    return res.status(500).json({ success: false, message: "Bot factory busy, try again in 30s" });
   }
 };
