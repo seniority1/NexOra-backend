@@ -1,9 +1,12 @@
+// routes/bot.js   ← FINAL WORKING VERSION
 import express from "express";
 import auth from "../middleware/auth.js";
-import { startBot } from "../controllers/deployController.js";
+import { deployBotToVPS } from "../controllers/botDeployController.js";  // ← CORRECT NAME
 
 const router = express.Router();
 
-router.post("/start", auth, startBot);
+// THIS IS THE ONLY ROUTE YOU NEED FOR PHASE 1
+router.post("/deploy", auth, deployBotToVPS);
+// ← You can delete or comment out the old "/start" route
 
 export default router;
