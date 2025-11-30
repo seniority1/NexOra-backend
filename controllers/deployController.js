@@ -1,3 +1,4 @@
+// controllers/deploymentController.js  →  REPLACE YOUR CURRENT startBot WITH THIS
 import fs from "fs";
 import path from "path";
 import { exec } from "child_process";
@@ -17,11 +18,10 @@ export const startBot = async (req, res) => {
     const { ownerNumber, plan } = req.body;
 
     if (!ownerNumber || !plan)
-      return res.status(400).json({ success: false, message: "ownerNumber and plan required" });
+      return res.status(400).json({ success: false, message: "Missing data" });
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
     if ((user.coins || 0) < plan)
       return res.status(400).json({ success: false, message: "Not enough coins" });
 
@@ -29,87 +29,86 @@ export const startBot = async (req, res) => {
     user.coins -= plan;
     await user.save();
 
-    // Compute expiry
-    const expiry = new Date();
-    if (plan === 500) expiry.setDate(expiry.getDate() + 7);
-    else if (plan === 1000) expiry.setDate(expiry.getDate() + 14);
-    else if (plan === 1500) expiry.setDate(expiry.getDate() + 21);
-    else if (plan === 2000) expiry.setDate(expiry.getDate() + 35);
-    else expiry.setDate(expiry.getDate() + 7);
+    // Calculate days
+    const planDays = plan === 500 ? 7 : plan === 1000 ? 14 : plan === 1500 ? 21 : 28;
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + planDays);
 
-    // Create unique folder for bot
-    const folderName = `bot_${userId}_${Date.now()}`;
+    // Unique folder
+    const timestamp = Date.now();
+    const folderName = `\( {ownerNumber.replace(/[^0-9]/g, "")}_ \){timestamp}`;
     const botPath = path.resolve(process.cwd(), "bots", folderName);
+
     fs.mkdirSync(botPath, { recursive: true });
 
-    // Clone repository
-    await execAsync(`git clone https://github.com/seniority1/NexOra.git "${botPath}"`);
+    // Clone repo
+    await execAsync(`git clone https://github.com/seniority1/NexOra.git "${botPath}" --depth=1`);
 
-    // Install dependencies
-    await execAsync(`npm install`, { cwd: botPath });
+    // Install deps (fast on Render)
+    await execAsync(`npm install --omit=dev`, { cwd: botPath });
 
     // Write .env
-    const envContent = `WHATSAPP_NUMBER=${ownerNumber}\nUSER_ID=${userId}`;
-    fs.writeFileSync(path.join(botPath, ".env"), envContent);
+    fs.writeFileSync(
+      path.join(botPath, ".env"),
+      `WHATSAPP_NUMBER=\( {ownerNumber}\nUSER_ID= \){userId}\nDEPLOYMENT_ID=\( {folderName}\nEXPIRY_TIMESTAMP= \){expiryDate.getTime()}`
+    );
 
-    // Start PM2
-    const pm2Name = folderName;
-    try {
-      await execAsync(`pm2 start index.js --name ${pm2Name} --cwd "${botPath}" --update-env`);
-    } catch (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to start bot with PM2",
-        error: err.message
-      });
+    // Rename bot.js → index.js (if needed, some Render setups expect index.js)
+    const botFile = path.join(botPath, "bot.js");
+    const indexFile = path.join(botPath, "index.js");
+    if (fs.existsSync(botFile) && !fs.existsSync(indexFile)) {
+      fs.renameSync(botFile, indexFile);
     }
 
-    // Save deployment record
+    // Start with PM2 (Render allows it in background)
+    const pm2Name = `nexora_${folderName}`;
+    await execAsync(`pm2 delete "${pm2Name}" --silent || true`);
+    await execAsync(`pm2 start "\( {indexFile}" --name " \){pm2Name}" --update-env --no-autorestart`);
+
+    // Save deployment
     const deployment = await Deployment.create({
       user: userId,
       ownerNumber,
       plan,
-      status: "starting",
       folderName,
-      expiryDate: expiry,
+      pm2Name,
+      status: "starting",
+      expiryDate,
     });
 
-    // Poll for pairing.json file
+    // Wait for pairing.json (max 55 seconds)
     const pairingFile = path.join(botPath, "pairing.json");
-    const timeout = 60 * 1000;
-    const startTime = Date.now();
-    let pairing = null;
-
-    while (Date.now() - startTime < timeout) {
+    let attempts = 0;
+    while (attempts < 55) {
       if (fs.existsSync(pairingFile)) {
-        try {
-          pairing = JSON.parse(fs.readFileSync(pairingFile, "utf8"));
-          break;
-        } catch {}
+        const data = JSON.parse(fs.readFileSync(pairingFile, "utf8"));
+        deployment.status = "waiting_for_scan";
+        await deployment.save();
+
+        return res.json({
+          success: true,
+          message: "Bot started! Enter this code in WhatsApp",
+          pairingCode: data.code,
+          deploymentId: deployment._id,
+          expiresInDays: planDays,
+        });
       }
       await sleep(1000);
+      attempts++;
     }
 
-    if (pairing) {
-      deployment.status = "waiting_for_pairing";
-      await deployment.save();
-      return res.json({
-        success: true,
-        message: "Bot started, pairing code ready",
-        pairing,
-        deployment,
-      });
-    } else {
-      deployment.status = "started_no_pairing";
-      await deployment.save();
-      return res.status(502).json({
-        success: false,
-        message: "Bot started but no pairing code found",
-        deployment,
-      });
-    }
+    // No code yet → still okay
+    deployment.status = "waiting_for_scan";
+    await deployment.save();
+    return res.json({
+      success: true,
+      message: "Bot is starting… Open WhatsApp → Linked Devices → Link with phone number",
+      pairingCode: null,
+      deploymentId: deployment._id,
+      expiresInDays: planDays,
+    });
   } catch (err) {
     console.error("Deploy error:", err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    return res.status(500).json({ success: false, message: err.message || "Server error" });
   }
 };
