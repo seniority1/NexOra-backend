@@ -3,8 +3,7 @@ import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
-const VPS_URL = "https://156.232.88.100:3001";  // your TrueHost VPS
-const SECRET_KEY = "NexOraEmpire2025King";     // change this to anything secret
+const VPS_URL = "http://156.232.88.100";   // ← ONLY CHANGE THIS LINEconst SECRET_KEY = "NexOraEmpire2025King";     // change this to anything secret
 
 export const deployBotToVPS = async (req, res) => {
   try {
