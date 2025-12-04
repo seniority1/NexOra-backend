@@ -1,11 +1,9 @@
-// routes/bot.js  ← CREATE THIS FILE
 import express from "express";
-import { deployBotToVPS } from "../controllers/botDeployController.js";
-import auth from "../middleware/auth.js";  // or your auth middleware
+import botRoutes from "./src/routes/botRoutes.js";
 
-const router = express.Router();
+const app = express();
+app.use(express.json());
 
-// THIS IS THE ONLY ROUTE FOR PHASE 1
-router.post("/deploy", auth, deployBotToVPS);
+app.use("/bot", botRoutes);
 
-export default router;
+app.listen(3000, () => console.log("Server running"));
