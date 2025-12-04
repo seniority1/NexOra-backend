@@ -3,8 +3,11 @@ import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
-const FACTORY_URL = "http://156.232.88.100:8000/deploy";  // ← VPS bot factory endpoint
-const SECRET_KEY = "NexOraEmpire2025King";                // ← Keep private
+const FACTORY_URL = "http://156.232.88.100:8000/deploy";  
+const SECRET_KEY = "NexOraEmpire2025King";
+
+// Move cost table outside the function
+const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
 
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -17,13 +20,13 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Normalize phone (remove symbols, convert leading 0 → 234)
+    // Clean and format phone number
     const cleanPhone = phoneNumber.replace(/[^\d]/g, "");
     const formattedPhone = cleanPhone.startsWith("0")
       ? "234" + cleanPhone.slice(1)
       : cleanPhone;
 
-    // 1. Deduct coins
+    // 1. Get user
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -32,9 +35,8 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Cost logic
-    const costTable = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
-    const cost = costTable[days] || 2000;
+    // Determine cost
+    const cost = COST_TABLE[days] || 2000;
 
     if (user.coins < cost) {
       return res.status(400).json({
@@ -43,10 +45,7 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    user.coins -= cost;
-    await user.save();
-
-    // 2. Call VPS factory
+    // 2. Call VPS factory BEFORE deducting coins
     const factoryResponse = await axios.post(
       FACTORY_URL,
       {
@@ -59,29 +58,36 @@ export const deployBotToVPS = async (req, res) => {
     );
 
     if (!factoryResponse.data.success) {
-      throw new Error(factoryResponse.data.message || "Factory rejected");
+      return res.status(500).json({
+        success: false,
+        message: factoryResponse.data.message || "Factory rejected request",
+      });
     }
 
     const pairingCode = factoryResponse.data.pairingCode;
 
-    // 3. Save deployment
+    // 3. Deduct coins AFTER successful factory response
+    user.coins -= cost;
+    await user.save();
+
+    // 4. Save deployment
     await Deployment.create({
       user: userId,
-      phoneNumber: cleanPhone,
+      phoneNumber: formattedPhone,
       days,
       pairingCode,
       status: pairingCode === "Already linked" ? "active" : "waiting_pairing",
       expiryDate: new Date(Date.now() + days * 86400000),
     });
 
-    // 4. Success output
+    // 5. Success output
     return res.json({
       success: true,
       pairingCode,
       message:
         pairingCode === "Already linked"
           ? `Bot already active for ${days} days`
-          : `Bot ready! Use this pairing code in WhatsApp → Linked Devices → Add Device\n\nValid for ${days} days.`,
+          : `Bot ready! Use this pairing code in WhatsApp → Linked Devices.\n\nValid for ${days} days.`,
     });
   } catch (error) {
     console.error("Deploy Error:", error.message);
@@ -89,6 +95,7 @@ export const deployBotToVPS = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Factory offline or busy. Try again in 20 seconds.",
+      error: error.message,
     });
   }
 };
