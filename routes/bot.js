@@ -1,9 +1,8 @@
 import express from "express";
-import botRoutes from "./src/routes/botRoutes.js";
+import { deployBotToVPS } from "../controllers/botDeployController.js";
 
-const app = express();
-app.use(express.json());
+const router = express.Router();
 
-app.use("/bot", botRoutes);
+router.post("/deploy", deployBotToVPS);
 
-app.listen(3000, () => console.log("Server running"));
+export default router;
