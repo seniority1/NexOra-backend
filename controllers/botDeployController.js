@@ -6,7 +6,6 @@ import User from "../models/User.js";
 const FACTORY_URL = "http://156.232.88.100:8000/deploy";
 const SECRET_KEY = "NexOraEmpire2025King";
 
-// Cost table for different plans
 const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
 
 export const deployBotToVPS = async (req, res) => {
@@ -16,20 +15,13 @@ export const deployBotToVPS = async (req, res) => {
     if (!phoneNumber) {
       return res.status(400).json({
         success: false,
-        message: "Phone number is required",
+        message: "Missing phoneNumber",
       });
     }
 
-    // ⛔ userId removed, now using JWT
-    if (!req.user || !req.user.email) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // 1️⃣ Fetch user by JWT email
+    // Get logged-in user's email from JWT middleware
     const user = await User.findOne({ email: req.user.email });
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -43,8 +35,9 @@ export const deployBotToVPS = async (req, res) => {
       ? "234" + cleanPhone.slice(1)
       : cleanPhone;
 
-    // 2️⃣ Check coins
+    // Cost check
     const cost = COST_TABLE[days] || 2000;
+
     if (user.coins < cost) {
       return res.status(400).json({
         success: false,
@@ -52,7 +45,7 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // 3️⃣ Call factory
+    // Call Factory VPS
     const factoryResponse = await axios.post(
       FACTORY_URL,
       {
@@ -75,13 +68,13 @@ export const deployBotToVPS = async (req, res) => {
 
     const pairingCode = factoryResponse.data.pairingCode;
 
-    // 4️⃣ Deduct coins
+    // Deduct coins after success
     user.coins -= cost;
     await user.save();
 
-    // 5️⃣ Save deployment
+    // Save deployment
     await Deployment.create({
-      user: user._id, // now using actual user ID from DB
+      user: user._id,
       phoneNumber: formattedPhone,
       days,
       pairingCode,
@@ -89,14 +82,13 @@ export const deployBotToVPS = async (req, res) => {
       expiryDate: new Date(Date.now() + days * 86400000),
     });
 
-    // 6️⃣ Respond success
     return res.json({
       success: true,
       pairingCode,
       message:
         pairingCode === "Already linked"
           ? `Bot already active for ${days} days`
-          : `Bot ready! Use this pairing code in WhatsApp → Linked Devices.\n\nValid for ${days} days.`,
+          : `Bot ready! Use this pairing code in WhatsApp → Linked Devices.\nValid for ${days} days.`,
     });
   } catch (error) {
     console.error("Deploy Error:", error.message);
