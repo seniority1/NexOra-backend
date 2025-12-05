@@ -44,12 +44,16 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // 3️⃣ Call Factory (only send required info)
+    // 3️⃣ Call Factory (send all required fields)
     const factoryResponse = await axios.post(
       FACTORY_URL,
       {
+        userId: userId.toString(),
         phoneNumber: formattedPhone,
         days,
+        folderName: formattedPhone,   // required by factory
+        plan: days,                   // required by factory
+        ownerNumber: formattedPhone,  // required by factory
         secret: SECRET_KEY,
       },
       { timeout: 60000 }
