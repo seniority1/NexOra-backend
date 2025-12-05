@@ -6,6 +6,7 @@ import User from "../models/User.js";
 const FACTORY_URL = "http://156.232.88.100:8000/deploy";
 const SECRET_KEY = "NexOraEmpire2025King";
 
+// Cost table for different plans
 const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
 
 export const deployBotToVPS = async (req, res) => {
@@ -29,15 +30,14 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Format phone number
+    // Format phone number (replace 0-prefix with 234)
     const cleanPhone = phoneNumber.replace(/[^\d]/g, "");
     const formattedPhone = cleanPhone.startsWith("0")
       ? "234" + cleanPhone.slice(1)
       : cleanPhone;
 
-    // Cost check
+    // Check if user has enough coins
     const cost = COST_TABLE[days] || 2000;
-
     if (user.coins < cost) {
       return res.status(400).json({
         success: false,
@@ -45,7 +45,7 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Call Factory VPS
+    // Call the Factory VPS
     const factoryResponse = await axios.post(
       FACTORY_URL,
       {
@@ -68,20 +68,24 @@ export const deployBotToVPS = async (req, res) => {
 
     const pairingCode = factoryResponse.data.pairingCode;
 
-    // Deduct coins after success
+    // Deduct coins after successful deployment
     user.coins -= cost;
     await user.save();
 
-    // Save deployment
+    // Save deployment in DB with all required fields
     await Deployment.create({
       user: user._id,
       phoneNumber: formattedPhone,
       days,
       pairingCode,
+      folderName: formattedPhone,   // ✅ required
+      plan: days,                    // ✅ required
+      ownerNumber: formattedPhone,   // ✅ required
       status: pairingCode === "Already linked" ? "active" : "waiting_pairing",
       expiryDate: new Date(Date.now() + days * 86400000),
     });
 
+    // Respond success
     return res.json({
       success: true,
       pairingCode,
