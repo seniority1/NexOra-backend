@@ -6,12 +6,12 @@ import User from "../models/User.js";
 const FACTORY_URL = "http://156.232.88.100:8000/deploy";
 const SECRET_KEY = "NexOraEmpire2025King";
 
-// Cost table for different plans
+// Cost table
 const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
 
 export const deployBotToVPS = async (req, res) => {
   try {
-    const { phoneNumber, days = 30 } = req.body;
+    let { phoneNumber, days = 30 } = req.body;
 
     if (!phoneNumber) {
       return res.status(400).json({
@@ -20,9 +20,8 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Get logged-in user's email from JWT middleware
+    // Get logged-in user
     const user = await User.findOne({ email: req.user.email });
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -30,11 +29,10 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Format phone number (replace 0-prefix with 234)
-    const cleanPhone = phoneNumber.replace(/[^\d]/g, "");
-    const formattedPhone = cleanPhone.startsWith("0")
-      ? "234" + cleanPhone.slice(1)
-      : cleanPhone;
+    // Format phone number → convert 080 → 23480
+    const raw = phoneNumber.replace(/[^\d]/g, "");
+    const formattedPhone =
+      raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
     // Check if user has enough coins
     const cost = COST_TABLE[days] || 2000;
@@ -45,15 +43,11 @@ export const deployBotToVPS = async (req, res) => {
       });
     }
 
-    // Call the Factory VPS
+    // Call the Factory VPS (this is where the pairing code is generated)
     const factoryResponse = await axios.post(
       FACTORY_URL,
       {
         phoneNumber: formattedPhone,
-        days,
-        folderName: formattedPhone,
-        plan: days,
-        ownerNumber: formattedPhone,
         secret: SECRET_KEY,
       },
       { timeout: 60000 }
@@ -68,24 +62,24 @@ export const deployBotToVPS = async (req, res) => {
 
     const pairingCode = factoryResponse.data.pairingCode;
 
-    // Deduct coins after successful deployment
+    // Deduct coins after success
     user.coins -= cost;
     await user.save();
 
-    // Save deployment in DB with all required fields
+    // Save deployment record
     await Deployment.create({
       user: user._id,
       phoneNumber: formattedPhone,
       days,
       pairingCode,
-      folderName: formattedPhone,   // ✅ required
-      plan: days,                    // ✅ required
-      ownerNumber: formattedPhone,   // ✅ required
-      status: pairingCode === "Already linked" ? "active" : "waiting_pairing",
+      folderName: formattedPhone,
+      plan: days,
+      ownerNumber: formattedPhone,
+      status:
+        pairingCode === "Already linked" ? "active" : "waiting_pairing",
       expiryDate: new Date(Date.now() + days * 86400000),
     });
 
-    // Respond success
     return res.json({
       success: true,
       pairingCode,
