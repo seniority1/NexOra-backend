@@ -13,6 +13,7 @@ import referralRoutes from "./routes/referral.js";
 import adminRoutes from "./routes/admin.js";
 import "./cron/dailyReport.js";    // ← THIS IS THE TRUTH
 import botRoutes from "./routes/bot.js";  // ← ADD THIS
+import botDeployRoutes from "./routes/botDeployRoutes.js";
 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
@@ -56,6 +57,7 @@ app.use("/api/deploy", deployRoutes);
 app.use("/api/referral", referralRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/bot", botRoutes);  // ← ADD THIS
+app.use("/api/bot", botDeployRoutes);
 
 // MongoDB Connection + ONE-TIME ADMIN SETUP + HARD-CODED IP
 mongoose
