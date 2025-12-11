@@ -1,6 +1,6 @@
 import express from "express";
 import { deployBotToVPS } from "../controllers/botDeployController.js";
-import { authMiddleware } from "../middlewares/auth.js"; // make sure you have this
+import { authMiddleware } from "../middlewares/auth.js"; // This line is correct
 
 const router = express.Router();
 
