@@ -1,6 +1,8 @@
+// src/routes/bot.js
+
 import express from "express";
 import { deployBotToVPS } from "../controllers/botDeployController.js";
-import { authMiddleware } from "../middlewares/auth.js"; // This line is correct
+import { authMiddleware } from "../middleware/auth.js";  // ← Fixed: singular "middleware"
 
 const router = express.Router();
 
