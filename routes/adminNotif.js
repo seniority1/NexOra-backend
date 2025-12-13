@@ -1,6 +1,6 @@
 import express from "express";
 import UserNotif from "../models/UserNotif.js";
-import authMiddleware from "../middleware/authMiddleware.js"; // make sure only admins can send
+import authMiddleware from "../middleware/verifyAdmin.js.js"; // make sure only admins can send
 
 const router = express.Router();
 
