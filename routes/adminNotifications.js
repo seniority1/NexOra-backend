@@ -1,6 +1,6 @@
 import express from "express";
-import { verifyAdmin } from "../middleware/auth.js";
-import { sendNotification, getNotifications } from "../controllers/adminNotifications.js";
+// Use default import
+import verifyAdmin from "../middleware/auth.js";import { sendNotification, getNotifications } from "../controllers/adminNotifications.js";
 
 const router = express.Router();
 
