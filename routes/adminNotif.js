@@ -1,12 +1,13 @@
+// routes/adminNotif.js
 import express from "express";
 import UserNotif from "../models/UserNotif.js";
-import authMiddleware from "../middleware/verifyAdmin.js"; // make sure only admins can send
+import authMiddleware from "../middleware/authMiddleware.js"; // Only admins
 
 const router = express.Router();
 
-// POST /api/admin/notify
-router.post("/notify", authMiddleware, async (req, res) => {
-  const { title, message, recipientEmail } = req.body;
+// POST /api/admin/notifications
+router.post("/notifications", authMiddleware, async (req, res) => {
+  const { email, title, message } = req.body;
 
   if (!title || !message) {
     return res.status(400).json({ error: "Title and message required" });
@@ -15,26 +16,21 @@ router.post("/notify", authMiddleware, async (req, res) => {
   try {
     let recipients = [];
 
-    if (recipientEmail) {
-      // send to a specific user
-      recipients.push(recipientEmail.toLowerCase());
+    if (email) {
+      recipients.push(email.toLowerCase());
     } else {
-      // send to all users
-      const users = await import("../models/User.js").then(m => m.default.find({}));
+      const usersModule = await import("../models/User.js");
+      const users = await usersModule.default.find({});
       recipients = users.map(u => u.email);
     }
 
-    // save notification for each recipient
-    const notifPromises = recipients.map(email =>
-      UserNotif.create({ title, message, recipientEmail: email })
+    const notifPromises = recipients.map(e =>
+      UserNotif.create({ title, message, recipientEmail: e })
     );
-    const notifications = await Promise.all(notifPromises);
 
-    res.status(201).json({
-      success: true,
-      count: notifications.length,
-      message: `Notification sent to ${recipientEmail || "all users"}`,
-    });
+    await Promise.all(notifPromises);
+
+    res.status(201).json({ success: true, message: `Notification sent to ${email || "all users"}` });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
