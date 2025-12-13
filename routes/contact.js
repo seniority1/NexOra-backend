@@ -1,10 +1,12 @@
 import express from "express";
 import { saveMessage, getMessages } from "../controllers/contactController.js";
 
-// GET /api/contact/ (fetch all messages)
-router.get("/", getMessages);
+const router = express.Router(); // <-- Make sure this is here!
 
-// POST /api/contact/  ← note: just "/" here
+// POST /api/contact/  (to save a message)
 router.post("/", saveMessage);
+
+// GET /api/contact/  (to fetch all messages)
+router.get("/", getMessages);
 
 export default router;
