@@ -1,7 +1,7 @@
 // routes/adminNotif.js
 import express from "express";
 import UserNotif from "../models/UserNotif.js";
-import authMiddleware from "../middleware/authMiddleware.js"; // Only admins
+import authMiddleware from "../middleware/verifyAdmin.js"; // Only admins
 
 const router = express.Router();
 
