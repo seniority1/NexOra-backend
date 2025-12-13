@@ -17,3 +17,14 @@ export const saveMessage = async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 };
+
+// Fetch all messages
+export const getMessages = async (req, res) => {
+  try {
+    const messages = await Message.find().sort({ createdAt: -1 }); // newest first
+    return res.status(200).json(messages);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server error" });
+  }
+};
