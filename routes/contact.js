@@ -1,7 +1,8 @@
 import express from "express";
-import { saveMessage } from "../controllers/contactController.js";
+import { saveMessage, getMessages } from "../controllers/contactController.js";
 
-const router = express.Router();
+// GET /api/contact/ (fetch all messages)
+router.get("/", getMessages);
 
 // POST /api/contact/  ← note: just "/" here
 router.post("/", saveMessage);
