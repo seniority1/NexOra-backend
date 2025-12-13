@@ -15,6 +15,7 @@ import "./cron/dailyReport.js";    // ← THIS IS THE TRUTH
 //import botRoutes from "./routes/bot.js";  // ← ADD THIS
 import botDeployRoutes from "./routes/botDeployRoutes.js";
 import contactRoutes from "./routes/contact.js";
+import adminNotificationsRoutes from "./routes/adminNotifications.js";
 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
@@ -60,6 +61,7 @@ app.use("/api/admin", adminRoutes);
 //app.use("/api/bot", botRoutes);  // ← ADD THIS
 app.use("/api/bot", botDeployRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/admin", adminNotificationsRoutes);
 
 
 // MongoDB Connection + ONE-TIME ADMIN SETUP + HARD-CODED IP
