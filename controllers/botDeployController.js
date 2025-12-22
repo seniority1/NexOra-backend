@@ -2,14 +2,19 @@ import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
-const FACTORY_URL = "http://156.232.88.100:8000"; // Base URL for factory
+const FACTORY_URL = "http://156.232.88.100:8000"; 
 const SECRET_KEY = "NexOraEmpire2025King";
 
-const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
+// 💰 Your official pricing structure
+const COST_TABLE = { 
+  7: 500,   // 1 Week
+  14: 1000, // 2 Weeks
+  21: 1500, // 3 Weeks
+  30: 2000  // 1 Month
+};
 
 /**
  * 1. FETCH ALL USER BOTS
- * Fills the 5 slots on the frontend
  */
 export const getUserDeployments = async (req, res) => {
   try {
@@ -34,7 +39,6 @@ export const getUserDeployments = async (req, res) => {
 
 /**
  * 2. DEPLOY BOT
- * Validates coins, slots, and calls /deploy on Factory
  */
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -45,23 +49,32 @@ export const deployBotToVPS = async (req, res) => {
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
+    // --- 5-SLOT LIMIT CHECK ---
     const currentDeployments = await Deployment.countDocuments({ user: user._id });
     if (currentDeployments >= 5) {
       return res.status(400).json({ success: false, message: "Limit reached! You can only manage 5 bots." });
     }
 
+    // --- PRICING VALIDATION ---
+    const cost = COST_TABLE[days]; 
+    if (cost === undefined) {
+        return res.status(400).json({ success: false, message: "Invalid plan duration selected." });
+    }
+
+    if (user.coins < cost) {
+        return res.status(400).json({ success: false, message: `Insufficient coins. This plan costs ${cost} coins.` });
+    }
+
+    // --- PHONE FORMATTING & DUPLICATE CHECK ---
     const raw = phoneNumber.replace(/[^\d]/g, "");
     const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
     const alreadyDeployed = await Deployment.findOne({ user: user._id, phoneNumber: formattedPhone });
     if (alreadyDeployed) {
-      return res.status(400).json({ success: false, message: "This number is already in a slot!" });
+      return res.status(400).json({ success: false, message: "This number is already in one of your slots!" });
     }
 
-    const cost = COST_TABLE[days] || 2000;
-    if (user.coins < cost) return res.status(400).json({ success: false, message: "Not enough coins" });
-
-    // Call Factory VPS Deploy
+    // --- CALL FACTORY VPS ---
     const factoryResponse = await axios.post(`${FACTORY_URL}/deploy`, {
       phoneNumber: formattedPhone,
       secret: SECRET_KEY
@@ -73,6 +86,7 @@ export const deployBotToVPS = async (req, res) => {
 
     const pairingCode = factoryResponse.data.pairingCode;
 
+    // --- DEDUCT COINS & SAVE ---
     user.coins -= cost;
     await user.save();
 
@@ -96,7 +110,6 @@ export const deployBotToVPS = async (req, res) => {
 
 /**
  * 3. STOP BOT
- * Tells Factory to stop the process and updates DB status
  */
 export const stopBot = async (req, res) => {
   try {
@@ -118,7 +131,6 @@ export const stopBot = async (req, res) => {
 
 /**
  * 4. RESTART BOT
- * Triggers a restart on the Factory VPS
  */
 export const restartBot = async (req, res) => {
   try {
@@ -134,17 +146,14 @@ export const restartBot = async (req, res) => {
 
 /**
  * 5. DELETE BOT
- * Wipes files on Factory and removes record from MongoDB to free a slot
  */
 export const deleteBot = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
     const user = await User.findOne({ email: req.user.email });
 
-    // Wipe session files on Factory
     await axios.post(`${FACTORY_URL}/delete`, { phoneNumber, secret: SECRET_KEY });
 
-    // Remove from our DB
     await Deployment.findOneAndDelete({ user: user._id, phoneNumber });
 
     res.json({ success: true, message: "Slot cleared successfully" });
