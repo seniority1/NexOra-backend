@@ -1,23 +1,43 @@
 import express from "express";
 import { 
   deployBotToVPS, 
-  getUserDeployments, // 👈 New: Get all bots for the 5 slots
+  getUserDeployments, 
+  stopBot, 
+  restartBot, 
+  deleteBot 
 } from "../controllers/botDeployController.js";
 import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
-// 1. Fetch all bots for the dashboard slots
-// GET /api/bot/user-bots
+/**
+ * @route   GET /api/bot/user-bots
+ * @desc    Fetch all 5 slots (active or empty) for the dashboard
+ */
 router.get("/user-bots", authMiddleware, getUserDeployments);
 
-// 2. Deploy a new bot to a slot
-// POST /api/bot/deploy
+/**
+ * @route   POST /api/bot/deploy
+ * @desc    Initialize a new bot deployment
+ */
 router.post("/deploy", authMiddleware, deployBotToVPS);
 
-/* 3. FUTURE: Add Stop/Restart/Delete here 
-   router.post("/stop", authMiddleware, stopBotController);
-   router.post("/delete", authMiddleware, deleteBotController);
-*/
+/**
+ * @route   POST /api/bot/stop
+ * @desc    Stop a running bot instance
+ */
+router.post("/stop", authMiddleware, stopBot);
+
+/**
+ * @route   POST /api/bot/restart
+ * @desc    Restart a bot instance
+ */
+router.post("/restart", authMiddleware, restartBot);
+
+/**
+ * @route   POST /api/bot/delete
+ * @desc    Wipe bot session and free up the slot
+ */
+router.post("/delete", authMiddleware, deleteBot);
 
 export default router;
