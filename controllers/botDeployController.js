@@ -1,4 +1,3 @@
-// src/controllers/botDeployController.js
 import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
@@ -6,50 +5,77 @@ import User from "../models/User.js";
 const FACTORY_URL = "http://156.232.88.100:8000/deploy";
 const SECRET_KEY = "NexOraEmpire2025King";
 
-// Cost table
 const COST_TABLE = { 7: 500, 14: 1000, 21: 1500, 30: 2000 };
 
+/**
+ * 1. FETCH ALL USER BOTS (To fill the 5 Slots)
+ * This is called by the UI on page load
+ */
+export const getUserDeployments = async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // Find all bots belonging to this user
+    const bots = await Deployment.find({ user: user._id });
+
+    return res.json({
+      success: true,
+      bots: bots.map(b => ({
+        phoneNumber: b.phoneNumber,
+        status: b.status, // e.g., 'active', 'waiting_pairing'
+        expiryDate: b.expiryDate,
+        pairingCode: b.pairingCode
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * 2. DEPLOY BOT (Slot Validation + VPS Call)
+ */
 export const deployBotToVPS = async (req, res) => {
   try {
-    let { phoneNumber, days = 30 } = req.body;
+    let { phoneNumber, days = 7 } = req.body;
 
     if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: "Missing phoneNumber" });
+    }
+
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // --- NEW: 5-SLOT LIMIT CHECK ---
+    const currentDeployments = await Deployment.countDocuments({ user: user._id });
+    if (currentDeployments >= 5) {
       return res.status(400).json({
         success: false,
-        message: "Missing phoneNumber",
+        message: "Limit reached! You can only manage 5 bots per account."
       });
     }
 
-    // Get logged-in user
-    const user = await User.findOne({ email: req.user.email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Format phone number → convert 080 → 23480
+    // Format phone number
     const raw = phoneNumber.replace(/[^\d]/g, "");
-    const formattedPhone =
-      raw.startsWith("0") ? "234" + raw.slice(1) : raw;
+    const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
-    // Check if user has enough coins
+    // --- NEW: DUPLICATE CHECK ---
+    const alreadyDeployed = await Deployment.findOne({ user: user._id, phoneNumber: formattedPhone });
+    if (alreadyDeployed) {
+      return res.status(400).json({ success: false, message: "This number is already in one of your slots!" });
+    }
+
+    // Cost Check
     const cost = COST_TABLE[days] || 2000;
     if (user.coins < cost) {
-      return res.status(400).json({
-        success: false,
-        message: "Not enough coins",
-      });
+      return res.status(400).json({ success: false, message: "Not enough coins" });
     }
 
-    // Call the Factory VPS (this is where the pairing code is generated)
+    // Call Factory VPS
     const factoryResponse = await axios.post(
       FACTORY_URL,
-      {
-        phoneNumber: formattedPhone,
-        secret: SECRET_KEY,
-      },
+      { phoneNumber: formattedPhone, secret: SECRET_KEY },
       { timeout: 60000 }
     );
 
@@ -62,38 +88,31 @@ export const deployBotToVPS = async (req, res) => {
 
     const pairingCode = factoryResponse.data.pairingCode;
 
-    // Deduct coins after success
+    // Deduct coins & Save
     user.coins -= cost;
     await user.save();
 
-    // Save deployment record
     await Deployment.create({
       user: user._id,
       phoneNumber: formattedPhone,
       days,
       pairingCode,
       folderName: formattedPhone,
-      plan: days,
-      ownerNumber: formattedPhone,
-      status:
-        pairingCode === "Already linked" ? "active" : "waiting_pairing",
+      status: pairingCode === "Already linked" ? "active" : "waiting_pairing",
       expiryDate: new Date(Date.now() + days * 86400000),
     });
 
     return res.json({
       success: true,
       pairingCode,
-      message:
-        pairingCode === "Already linked"
-          ? `Bot already active for ${days} days`
-          : `Bot ready! Use this pairing code in WhatsApp → Linked Devices.\nValid for ${days} days.`,
+      message: "Bot initialized in a new slot!"
     });
+
   } catch (error) {
     console.error("Deploy Error:", error.message);
-
     return res.status(500).json({
       success: false,
-      message: "Factory offline or busy. Try again in 20 seconds.",
+      message: "Factory offline or busy. Try again shortly.",
       error: error.message,
     });
   }
