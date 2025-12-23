@@ -3,8 +3,14 @@ import {
   getUserInfo, 
   updateCoins, 
   addDeployment,
-  getTransactions      // 👈 NEW import
+  getTransactions 
 } from "../controllers/userController.js";
+
+// Import the new notification controllers
+import { 
+  getUserNotifications, 
+  markNotificationsRead 
+} from "../controllers/usernotificationController.js";
 
 const router = express.Router();
 
@@ -17,7 +23,14 @@ router.post("/updateCoins", updateCoins);
 // 🚀 Add a new deployment
 router.post("/addDeployment", addDeployment);
 
-// 📜 NEW: Get transaction history
-router.get("/transactions", getTransactions);   // 👈 Added route
+// 📜 Get transaction history
+router.get("/transactions", getTransactions);
+
+// 🔔 NOTIFICATIONS ROUTES
+// This fetches global + private notifications for the bell icon
+router.get("/notifications", getUserNotifications);
+
+// This removes the red "unread" status when the user clicks the bell
+router.post("/notifications/mark-read", markNotificationsRead);
 
 export default router;
