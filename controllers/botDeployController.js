@@ -37,7 +37,7 @@ export const getUserDeployments = async (req, res) => {
 };
 
 /**
- * 2. DEPLOY BOT
+ * 2. DEPLOY BOT (Optimized Handshake)
  */
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -48,7 +48,7 @@ export const deployBotToVPS = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const currentDeployments = await Deployment.countDocuments({ user: user._id });
-    if (currentDeployments >= 5) return res.status(400).json({ success: false, message: "Limit: 5 bots." });
+    if (currentDeployments >= 5) return res.status(400).json({ success: false, message: "Limit reached: 5 bots." });
 
     const cost = COST_TABLE[days];
     if (user.coins < cost) return res.status(400).json({ success: false, message: "Insufficient coins." });
@@ -57,21 +57,24 @@ export const deployBotToVPS = async (req, res) => {
     const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
     const alreadyDeployed = await Deployment.findOne({ user: user._id, phoneNumber: formattedPhone });
-    if (alreadyDeployed) return res.status(400).json({ success: false, message: "Already in a slot!" });
+    if (alreadyDeployed) return res.status(400).json({ success: false, message: "Number already active." });
 
-    // Send to Factory - Timeout optimized
+    // --- TRIGGER VPS ---
+    // We wrap this in its own try/catch so a VPS timeout doesn't kill the whole request
     try {
       await axios.post(`${FACTORY_URL}/deploy`, {
         phoneNumber: formattedPhone,
         secret: SECRET_KEY
-      }, { timeout: 8000 }); 
+      }, { timeout: 10000 }); // Give it 10 seconds
     } catch (vpsErr) {
-      console.log("VPS busy, but proceeding with DB record...");
+      console.log("⚠️ VPS handshake slow, but engine should be starting in background...");
     }
 
+    // Deduct coins
     user.coins -= cost;
     await user.save();
 
+    // Create record in Database
     await Deployment.create({
       user: user._id,
       phoneNumber: formattedPhone,
@@ -81,9 +84,19 @@ export const deployBotToVPS = async (req, res) => {
       expiryDate: new Date(Date.now() + (days * 86400000)),
     });
 
-    return res.json({ success: true, message: "Engine started! Refresh in 20s." });
+    // We return SUCCESS because the DB record is made and coins are taken.
+    // The Webhook from the VPS will update the pairing code later.
+    return res.json({ 
+      success: true, 
+      message: "Engine started! Check your dashboard in 20 seconds for the code." 
+    });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: "Deployment system error." });
+    console.error("CRITICAL ERROR:", error.message);
+    return res.status(500).json({ 
+      success: false, 
+      message: "An internal server error occurred. Please try again." 
+    });
   }
 };
 
@@ -104,12 +117,12 @@ export const stopBot = async (req, res) => {
 
     res.json({ success: true, message: "Bot stopped." });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to stop." });
+    res.status(500).json({ success: false, message: "Failed to stop bot." });
   }
 };
 
 /**
- * 4. RESTART BOT (Fixes the SyntaxError)
+ * 4. RESTART BOT
  */
 export const restartBot = async (req, res) => {
   try {
@@ -138,19 +151,22 @@ export const deleteBot = async (req, res) => {
 
     res.json({ success: true, message: "Slot cleared." });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to delete." });
+    res.status(500).json({ success: false, message: "Failed to delete bot." });
   }
 };
 
 /**
- * 6. WEBHOOK: Update Code
+ * 6. WEBHOOK: Update Pairing Code
  */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
   if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
 
   try {
-    await Deployment.findOneAndUpdate({ phoneNumber }, { pairingCode, status: "waiting_pairing" });
+    await Deployment.findOneAndUpdate(
+      { phoneNumber },
+      { pairingCode, status: "waiting_pairing" }
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
