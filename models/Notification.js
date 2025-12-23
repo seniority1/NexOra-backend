@@ -9,6 +9,11 @@ const NotificationSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  // 🚀 NEW: Link field for your WhatsApp Channel or other URLs
+  link: { 
+    type: String, 
+    default: "" 
+  },
   sentBy: { 
     type: String, 
     required: true 
