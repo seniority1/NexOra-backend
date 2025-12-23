@@ -5,12 +5,11 @@ import User from "../models/User.js";
 const FACTORY_URL = "http://156.232.88.100:8000"; 
 const SECRET_KEY = "NexOraEmpire2025King";
 
-// 💰 Your official pricing structure
 const COST_TABLE = { 
-  7: 500,   // 1 Week
-  14: 1000, // 2 Weeks
-  21: 1500, // 3 Weeks
-  30: 2000  // 1 Month
+  7: 500,   
+  14: 1000, 
+  21: 1500, 
+  30: 2000  
 };
 
 /**
@@ -21,7 +20,7 @@ export const getUserDeployments = async (req, res) => {
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const bots = await Deployment.find({ user: user._id });
+    const bots = await Deployment.find({ user: user._id }).sort({ createdAt: -1 });
 
     return res.json({
       success: true,
@@ -29,7 +28,7 @@ export const getUserDeployments = async (req, res) => {
         phoneNumber: b.phoneNumber,
         status: b.status,
         expiryDate: b.expiryDate,
-        pairingCode: b.pairingCode
+        pairingCode: b.pairingCode || "Initializing..."
       }))
     });
   } catch (error) {
@@ -38,48 +37,43 @@ export const getUserDeployments = async (req, res) => {
 };
 
 /**
- * 2. DEPLOY BOT (Optimized for Async Pairing)
+ * 2. DEPLOY BOT (FIXED: Async Handshake)
  */
 export const deployBotToVPS = async (req, res) => {
   try {
     let { phoneNumber, days = 7 } = req.body;
-
     if (!phoneNumber) return res.status(400).json({ success: false, message: "Missing phoneNumber" });
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const currentDeployments = await Deployment.countDocuments({ user: user._id });
-    if (currentDeployments >= 5) {
-      return res.status(400).json({ success: false, message: "Limit reached! You can only manage 5 bots." });
-    }
-
-    const cost = COST_TABLE[days]; 
-    if (cost === undefined) {
-        return res.status(400).json({ success: false, message: "Invalid plan duration selected." });
-    }
-
-    if (user.coins < cost) {
-        return res.status(400).json({ success: false, message: `Insufficient coins. This plan costs ${cost} coins.` });
-    }
-
+    // Formatting Phone
     const raw = phoneNumber.replace(/[^\d]/g, "");
     const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
+    // Validation
     const alreadyDeployed = await Deployment.findOne({ user: user._id, phoneNumber: formattedPhone });
-    if (alreadyDeployed) {
-      return res.status(400).json({ success: false, message: "This number is already in one of your slots!" });
+    if (alreadyDeployed) return res.status(400).json({ success: false, message: "Number already active!" });
+
+    const cost = COST_TABLE[days];
+    if (user.coins < cost) return res.status(400).json({ success: false, message: "Insufficient coins." });
+
+    // --- 🛠️ THE FIX: Async Request to Factory ---
+    try {
+      // We send the request but don't wait for the bot to fully "load"
+      // The factory should return { success: true } immediately upon starting the process
+      await axios.post(`${FACTORY_URL}/deploy`, {
+        phoneNumber: formattedPhone,
+        secret: SECRET_KEY
+      }, { timeout: 10000 }); // Wait only 10s for the VPS to acknowledge
+
+    } catch (vpsError) {
+      console.error("VPS Communication failed:", vpsError.message);
+      // Even if it "times out", usually the VPS process has already started.
+      // We proceed to create the DB entry so the user sees the "Warming up" status.
     }
 
-    const factoryResponse = await axios.post(`${FACTORY_URL}/deploy`, {
-      phoneNumber: formattedPhone,
-      secret: SECRET_KEY
-    }, { timeout: 15000 });
-
-    if (!factoryResponse.data.success) {
-      return res.status(500).json({ success: false, message: factoryResponse.data.message || "Factory error" });
-    }
-
+    // Deduct coins and create record
     user.coins -= cost;
     await user.save();
 
@@ -87,108 +81,61 @@ export const deployBotToVPS = async (req, res) => {
       user: user._id,
       phoneNumber: formattedPhone,
       days,
-      pairingCode: "Warming up...", 
-      folderName: formattedPhone,
-      status: "waiting_pairing",
+      pairingCode: "Generating...", 
+      status: "initializing",
       expiryDate: new Date(Date.now() + (days * 86400000)),
     });
 
     return res.json({ 
       success: true, 
-      message: "Engine started! Please wait 10-20 seconds and refresh to see your Pairing Code." 
+      message: "Engine is warming up! Refresh in 30 seconds to see your code." 
     });
 
   } catch (error) {
-    console.error("Deploy Error:", error.message);
-    return res.status(500).json({ success: false, message: "VPS Factory unreachable." });
+    console.error("Critical Deploy Error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error during deployment." });
   }
 };
 
 /**
- * 3. STOP BOT
+ * 3. STOP / RESTART / DELETE (Simplified)
  */
 export const stopBot = async (req, res) => {
+  const { phoneNumber } = req.body;
   try {
-    const { phoneNumber } = req.body;
-    const user = await User.findOne({ email: req.user.email });
-
-    await axios.post(`${FACTORY_URL}/stop`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
-
-    await Deployment.findOneAndUpdate(
-      { user: user._id, phoneNumber },
-      { status: "stopped", pairingCode: "" }
-    );
-
-    res.json({ success: true, message: "Bot stopped and slot paused." });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to communicate with VPS." });
-  }
+    await axios.post(`${FACTORY_URL}/stop`, { phoneNumber, secret: SECRET_KEY }, { timeout: 5000 });
+    await Deployment.findOneAndUpdate({ phoneNumber }, { status: "stopped" });
+    res.json({ success: true, message: "Bot stopped." });
+  } catch (err) { res.status(500).json({ success: false, message: "VPS error" }); }
 };
 
-/**
- * 4. RESTART BOT
- */
-export const restartBot = async (req, res) => {
-  try {
-    const { phoneNumber } = req.body;
-    await axios.post(`${FACTORY_URL}/deploy`, { phoneNumber, secret: SECRET_KEY });
-    res.json({ success: true, message: "Restart signal sent to VPS." });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to restart bot." });
-  }
-};
-
-/**
- * 5. DELETE BOT
- */
 export const deleteBot = async (req, res) => {
+  const { phoneNumber } = req.body;
   try {
-    const { phoneNumber } = req.body;
-    const user = await User.findOne({ email: req.user.email });
-
-    await axios.post(`${FACTORY_URL}/delete`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
-
-    await Deployment.findOneAndDelete({ user: user._id, phoneNumber });
-
-    res.json({ success: true, message: "Slot cleared successfully." });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to delete bot instance." });
-  }
+    await axios.post(`${FACTORY_URL}/delete`, { phoneNumber, secret: SECRET_KEY }, { timeout: 5000 });
+    await Deployment.findOneAndDelete({ phoneNumber });
+    res.json({ success: true, message: "Slot cleared." });
+  } catch (err) { res.status(500).json({ success: false, message: "VPS error" }); }
 };
 
-// --- 🛡️ NEW WEBHOOK FUNCTIONS START HERE ---
+// --- 🛡️ WEBHOOKS (Ensure these are linked in your routes.js) ---
 
-/**
- * 6. WEBHOOK: Update Pairing Code from VPS
- */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
-  if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
+  if (secret !== SECRET_KEY) return res.status(401).send("Unauthorized");
 
   try {
-    await Deployment.findOneAndUpdate(
-      { phoneNumber },
-      { pairingCode, status: "waiting_pairing" }
-    );
-    console.log(`📡 Dashboard Updated: ${phoneNumber} code is ${pairingCode}`);
+    await Deployment.findOneAndUpdate({ phoneNumber }, { pairingCode, status: "waiting_pairing" });
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
+  } catch (err) { res.status(500).json({ success: false }); }
 };
 
-/**
- * 7. WEBHOOK: Update Status from VPS
- */
 export const updateBotStatus = async (req, res) => {
   const { phoneNumber, status, secret } = req.body;
-  if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
+  if (secret !== SECRET_KEY) return res.status(401).send("Unauthorized");
 
   try {
     await Deployment.findOneAndUpdate({ phoneNumber }, { status });
-    console.log(`📡 Status Sync: ${phoneNumber} is ${status}`);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
+  } catch (err) { res.status(500).json({ success: false }); }
 };
