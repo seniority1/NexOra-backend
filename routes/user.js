@@ -1,66 +1,40 @@
-import User from "../models/User.js";
-import Bot from "../models/Bot.js";
+import express from "express";
 
-// 🧠 GET USER INFO (Profile & Coins)
-export const getUserInfo = async (req, res) => {
-  try {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ message: "Email is required" });
+// 1. Import Core User Logic
+import { 
+  getUserInfo, 
+  updateCoins, 
+  addDeployment,
+  getTransactions 
+} from "../controllers/userController.js";
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+// 2. Import Notification Logic 
+// (Ensure the file in /controllers is exactly: usernotificationController.js)
+import { 
+  getUserNotifications, 
+  markNotificationsRead 
+} from "../controllers/usernotificationController.js"; 
 
-    res.json({
-      name: user.name,
-      email: user.email,
-      coins: user.coins || 0,
-      referralCode: user.referralCode,
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
+const router = express.Router();
 
-// 💰 UPDATE COINS (When user buys/spends)
-export const updateCoins = async (req, res) => {
-  try {
-    const { email, amount } = req.body;
-    const user = await User.findOneAndUpdate(
-      { email },
-      { $inc: { coins: amount } },
-      { new: true }
-    );
-    res.json({ success: true, newBalance: user.coins });
-  } catch (err) {
-    res.status(500).json({ message: "Update failed" });
-  }
-};
+// --- Core User Routes ---
+// 🧠 Get profile data (Name, Coins, Deployments)
+router.get("/info", getUserInfo);
 
-// 🚀 ADD DEPLOYMENT (Tracked in DB)
-export const addDeployment = async (req, res) => {
-  try {
-    const { email, botType, phoneNumber } = req.body;
-    const newBot = await Bot.create({
-      ownerEmail: email,
-      botType,
-      phoneNumber,
-      status: "online",
-      createdAt: new Date(),
-    });
-    res.json({ success: true, bot: newBot });
-  } catch (err) {
-    res.status(500).json({ message: "Deployment tracking failed" });
-  }
-};
+// 💰 Manage coin balance and log transactions
+router.post("/updateCoins", updateCoins);
 
-// 📜 GET TRANSACTION HISTORY
-export const getTransactions = async (req, res) => {
-  try {
-    const { email } = req.query;
-    // Assuming you have a Transaction model, or tracking them in User
-    const user = await User.findOne({ email }).select("transactions");
-    res.json(user?.transactions || []);
-  } catch (err) {
-    res.status(500).json({ message: "Could not fetch history" });
-  }
-};
+// 🚀 Track new bot deployments
+router.post("/addDeployment", addDeployment);
+
+// 📜 Fetch the user's transaction history
+router.get("/transactions", getTransactions);
+
+// --- Notification Routes ---
+// 🔔 Fetches both Global and Private notifications for the user
+router.get("/notifications", getUserNotifications);
+
+// ✅ Marks notifications as read when the user opens the bell dropdown
+router.post("/notifications/mark-read", markNotificationsRead);
+
+export default router;
