@@ -2,21 +2,19 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
-import http from "http";                    // ← NEW
-import { Server } from "socket.io";          // ← NEW
+import http from "http";
+import { Server } from "socket.io";
 
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
 import paymentRoutes from "./routes/payment.js";
-//import deployRoutes from "./routes/deploy.js";
 import referralRoutes from "./routes/referral.js";
 import adminRoutes from "./routes/admin.js";
-import "./cron/dailyReport.js";    // ← THIS IS THE TRUTH
-//import botRoutes from "./routes/bot.js";  // ← ADD THIS
 import botDeployRoutes from "./routes/botDeployRoutes.js";
 import contactRoutes from "./routes/contact.js";
 import adminNotificationsRoutes from "./routes/adminNotifications.js";
 
+import "./cron/dailyReport.js"; 
 import Admin from "./models/Admin.js";
 import bcrypt from "bcrypt";
 
@@ -25,21 +23,24 @@ dotenv.config();
 const app = express();
 
 // Create HTTP server (required for Socket.io)
-const server = http.createServer(app);        // ← CHANGED FROM app.listen
+const server = http.createServer(app);
 
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: "*",                      // Change to your frontend URL in production
+    origin: "*", 
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
-// Make io globally available so admin controller can broadcast
+/**
+ * 🚀 GLOBAL SOCKET ACCESS
+ * This allows botDeployRoutes.js and its controller to 
+ * broadcast pairing codes and latency updates in real-time.
+ */
 global.io = io;
 
-// Optional: Log connections (you’ll see when users connect)
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
   socket.on("disconnect", () => {
@@ -55,16 +56,13 @@ app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/payment", paymentRoutes);
-//app.use("/api/deploy", deployRoutes);
 app.use("/api/referral", referralRoutes);
 app.use("/api/admin", adminRoutes);
-//app.use("/api/bot", botRoutes);  // ← ADD THIS
-app.use("/api/bot", botDeployRoutes);
+app.use("/api/bot", botDeployRoutes); // Handles the deployment and webhooks
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin", adminNotificationsRoutes);
 
-
-// MongoDB Connection + ONE-TIME ADMIN SETUP + HARD-CODED IP
+// MongoDB Connection + Admin IP Lockdown
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
@@ -72,7 +70,7 @@ mongoose
 
     const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
 
-    // 1. Auto-create admin account (only once)
+    // Auto-create/Update admin account
     const existingAdmin = await Admin.findOne({ email: adminEmail });
 
     if (!existingAdmin) {
@@ -86,31 +84,28 @@ mongoose
         name: "Alphonsus Okoko",
         email: process.env.ADMIN_EMAIL,
         passwordHash: hash,
-        allowedIPs: ["197.211.63.149"],        // ← HARD-CODED FOREVER
+        allowedIPs: ["197.211.63.149"], // Hard-coded whitelist
         trustedDevices: [],
       }).save();
 
       console.log("Admin created + IP 197.211.63.149 HARD-CODED");
     } else {
-      // Ensure your IP is in the array even if admin already exists
       await Admin.updateOne(
         { email: adminEmail },
         { $addToSet: { allowedIPs: "197.211.63.149" } }
       );
       console.log("Hard-coded IP 197.211.63.149 confirmed in whitelist");
     }
-
-    // NO MORE AUTO-IP FETCHING — REMOVED COMPLETELY
   })
   .catch((err) => {
     console.error("MongoDB Error:", err);
     process.exit(1);
   });
 
-// Start server using the HTTP server (not app.listen)
+// Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`NexOra Backend + Socket.io LIVE on port ${PORT}`);
-  console.log(`Broadcast System ACTIVE — You now control the airwaves`);
+  console.log(`Broadcast System ACTIVE — Syncing airwaves...`);
   console.log(`Admin IP locked to: 197.211.63.149`);
 });
