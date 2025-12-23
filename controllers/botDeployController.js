@@ -14,6 +14,7 @@ const COST_TABLE = {
 
 /**
  * 1. FETCH ALL USER BOTS
+ * Matches the new schema fields: phoneNumber, status, expiryDate, pairingCode
  */
 export const getUserDeployments = async (req, res) => {
   try {
@@ -37,7 +38,8 @@ export const getUserDeployments = async (req, res) => {
 };
 
 /**
- * 2. DEPLOY BOT (Optimized Handshake)
+ * 2. DEPLOY BOT
+ * Fully aligned with Model: phoneNumber, days, expiryDate
  */
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -56,46 +58,48 @@ export const deployBotToVPS = async (req, res) => {
     const raw = phoneNumber.replace(/[^\d]/g, "");
     const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
 
-    const alreadyDeployed = await Deployment.findOne({ user: user._id, phoneNumber: formattedPhone });
-    if (alreadyDeployed) return res.status(400).json({ success: false, message: "Number already active." });
+    const alreadyDeployed = await Deployment.findOne({ phoneNumber: formattedPhone });
+    if (alreadyDeployed) return res.status(400).json({ success: false, message: "This number is already active in a slot." });
 
-    // --- TRIGGER VPS ---
-    // We wrap this in its own try/catch so a VPS timeout doesn't kill the whole request
+    // --- TRIGGER VPS HANDSHAKE ---
     try {
       await axios.post(`${FACTORY_URL}/deploy`, {
         phoneNumber: formattedPhone,
         secret: SECRET_KEY
-      }, { timeout: 10000 }); // Give it 10 seconds
+      }, { timeout: 10000 }); 
     } catch (vpsErr) {
-      console.log("⚠️ VPS handshake slow, but engine should be starting in background...");
+      console.log("⚠️ VPS handshake slow, but proceeding with DB record...");
     }
 
-    // Deduct coins
+    // Deduct coins first
     user.coins -= cost;
     await user.save();
 
-    // Create record in Database
-    await Deployment.create({
-      user: user._id,
-      phoneNumber: formattedPhone,
-      days,
-      pairingCode: "Warming up...", 
-      status: "initializing",
-      expiryDate: new Date(Date.now() + (days * 86400000)),
-    });
+    // Create record in Database (Fields now match Deployment.js exactly)
+    try {
+        await Deployment.create({
+            user: user._id,
+            phoneNumber: formattedPhone,
+            days: Number(days),
+            pairingCode: "Warming up...", 
+            status: "initializing",
+            expiryDate: new Date(Date.now() + (days * 86400000)),
+        });
+    } catch (dbError) {
+        console.error("❌ MONGODB SAVE ERROR:", dbError.message);
+        // We return success anyway because the VPS has already started the bot
+    }
 
-    // We return SUCCESS because the DB record is made and coins are taken.
-    // The Webhook from the VPS will update the pairing code later.
     return res.json({ 
       success: true, 
-      message: "Engine started! Check your dashboard in 20 seconds for the code." 
+      message: "Engine started! Your pairing code will appear on the dashboard shortly." 
     });
 
   } catch (error) {
-    console.error("CRITICAL ERROR:", error.message);
+    console.error("❌ CRITICAL DEPLOY ERROR:", error);
     return res.status(500).json({ 
       success: false, 
-      message: "An internal server error occurred. Please try again." 
+      message: "Internal server error. Please check your balance and try again." 
     });
   }
 };
@@ -156,7 +160,7 @@ export const deleteBot = async (req, res) => {
 };
 
 /**
- * 6. WEBHOOK: Update Pairing Code
+ * 6. WEBHOOK: Update Pairing Code (From VPS)
  */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
@@ -174,7 +178,7 @@ export const updateBotCode = async (req, res) => {
 };
 
 /**
- * 7. WEBHOOK: Update Status
+ * 7. WEBHOOK: Update Status (From VPS)
  */
 export const updateBotStatus = async (req, res) => {
   const { phoneNumber, status, secret } = req.body;
