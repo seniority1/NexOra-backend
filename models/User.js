@@ -7,60 +7,52 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
     },
-
+    // 📞 ADDED/FIXED: phoneNumber (Clean index)
+    phoneNumber: {
+      type: String,
+      unique: true, // This creates the index automatically
+      sparse: true, // Allows multiple users to have 'null' if phone isn't required
+    },
     password: {
       type: String,
       required: true,
       minlength: 6,
     },
-
     verified: {
       type: Boolean,
       default: false,
     },
-
     verificationCode: {
       type: String,
       default: null,
     },
-
     codeExpiresAt: {
       type: Date,
       default: null,
     },
-
-    // NexCoins balance
     coins: {
       type: Number,
       default: 0,
       min: 0,
     },
-
-    // Pending referral reward (locked until first purchase)
     pendingReferralCoins: {
       type: Number,
       default: 0,
     },
-
-    // Referral system
     referralCode: {
       type: String,
       unique: true,
     },
-
     referredBy: {
-      type: String, // stores referralCode of the referrer
+      type: String, 
       default: null,
     },
-
-    // Coin transaction history
     transactions: [
       {
         amount: Number,
@@ -69,8 +61,6 @@ const userSchema = new mongoose.Schema(
         description: String,
       },
     ],
-
-    // Deployments
     deployments: [
       {
         name: String,
@@ -82,8 +72,6 @@ const userSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
-
-    // BAN SYSTEM — Added by the King
     isBanned: {
       type: Boolean,
       default: false,
@@ -92,7 +80,7 @@ const userSchema = new mongoose.Schema(
       type: Date,
     },
     bannedBy: {
-      type: String, // admin email
+      type: String,
     },
     banReason: {
       type: String,
@@ -102,7 +90,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate unique referral code
 userSchema.pre("save", function (next) {
   if (!this.referralCode) {
     this.referralCode =
@@ -112,5 +99,4 @@ userSchema.pre("save", function (next) {
 });
 
 const User = mongoose.model("User", userSchema);
-
 export default User;
