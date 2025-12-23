@@ -29,6 +29,14 @@ const DeploymentSchema = new mongoose.Schema(
       type: String, 
       default: "" 
     },
+    /**
+     * 📶 CONNECTION QUALITY INDICATOR
+     * Stores the response time (latency) in milliseconds
+     */
+    latency: {
+      type: Number,
+      default: 0
+    },
     // Automatic expiration based on days purchased
     expiryDate: { 
       type: Date, 
