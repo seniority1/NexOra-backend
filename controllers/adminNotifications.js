@@ -1,7 +1,6 @@
 import Notification from "../models/Notification.js";
 
 // 📢 1. SEND BROADCAST OR PRIVATE MESSAGE
-// Matches: router.post("/broadcast") in routes/admin.js
 export const sendBroadcast = async (req, res) => {
   try {
     const { title, message, targetUser } = req.body; 
@@ -31,7 +30,6 @@ export const sendBroadcast = async (req, res) => {
 };
 
 // 📜 2. GET ALL NOTIFICATIONS (Admin History View)
-// Matches: router.get("/notifications") in routes/admin.js
 export const getAllNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find().sort({ createdAt: -1 }).lean();
@@ -47,26 +45,38 @@ export const getAllNotifications = async (req, res) => {
 };
 
 // 🔔 3. GET USER NOTIFICATIONS (For the Dashboard Bell)
-// This allows users to see Global + Private messages sent to them
 export const getUserNotifications = async (req, res) => {
   try {
     const { email } = req.query;
+    if (!email) return res.status(400).json({ message: "User email is required" });
 
-    if (!email) {
-      return res.status(400).json({ message: "User email is required" });
-    }
-
-    // Finds notifications that are either for everyone ("") or specifically for this user
     const notifications = await Notification.find({
-      $or: [
-        { targetUser: "" }, 
-        { targetUser: email }
-      ]
+      $or: [{ targetUser: "" }, { targetUser: email }]
     }).sort({ createdAt: -1 });
 
     res.status(200).json(notifications);
   } catch (err) {
     console.error("Error fetching user notifications:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// 🗑️ 4. DELETE NOTIFICATION (New Function)
+export const deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params; // Grabs the ID from the URL
+    const deleted = await Notification.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Notification not found" });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: "Notification removed from database" 
+    });
+  } catch (err) {
+    console.error("Delete notification error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
