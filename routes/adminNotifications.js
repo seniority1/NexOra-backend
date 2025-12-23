@@ -1,13 +1,24 @@
 import express from "express";
-// Use default import
-import verifyAdmin from "../middleware/auth.js";import { sendNotification, getNotifications } from "../controllers/adminNotifications.js";
+import verifyAdmin from "../middleware/auth.js"; 
+
+// 🚀 FIXED: Importing the exact names from your adminNotifications controller
+import { 
+  sendBroadcast, 
+  getAllNotifications 
+} from "../controllers/adminNotifications.js"; 
 
 const router = express.Router();
 
-// POST: send a notification
-router.post("/notifications", verifyAdmin, sendNotification);
+/**
+ * These endpoints are mounted under /api/admin in your server.js
+ */
 
-// GET: fetch all notifications
-router.get("/notifications", verifyAdmin, getNotifications);
+// POST: Dispatch a notification (Global or Private)
+// URL: /api/admin/broadcast
+router.post("/broadcast", verifyAdmin, sendBroadcast);
+
+// GET: Fetch the notification history
+// URL: /api/admin/notifications
+router.get("/notifications", verifyAdmin, getAllNotifications);
 
 export default router;
