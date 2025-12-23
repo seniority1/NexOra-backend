@@ -11,7 +11,8 @@ import {
   getSecurityLogs 
 } from "../controllers/adminController.js";
 
-// 2. 🚀 Notification Logic (From the new adminNotifications.js)
+// 2. 🚀 Notification Logic (From the specialized adminNotifications.js)
+// These names MUST match the exports in your controller exactly
 import { 
   sendBroadcast, 
   getAllNotifications 
@@ -41,10 +42,10 @@ router.get("/gifted", verifyAdmin, getGiftedUsers);
 router.get("/security", verifyAdmin, getSecurityLogs);
 
 // --- 🔔 Notification System ---
-// 📜 Points to getAllNotifications in adminNotifications.js
+// 📜 Matches the function name: getAllNotifications
 router.get("/notifications", verifyAdmin, getAllNotifications);
 
-// 📢 Points to sendBroadcast in adminNotifications.js
+// 📢 Matches the function name: sendBroadcast
 router.post("/broadcast", verifyAdmin, sendBroadcast);
 
 export default router;
