@@ -1,9 +1,10 @@
 import Notification from "../models/Notification.js";
 
-// SEND NOTIFICATION
+// SEND NOTIFICATION (Updated for Targeting)
 export const sendNotification = async (req, res) => {
   try {
-    const { title, message } = req.body;
+    const { title, message, targetUser } = req.body; // Added targetUser
+    
     if (!title?.trim() || !message?.trim()) {
       return res.status(400).json({ message: "Title and message are required" });
     }
@@ -12,19 +13,16 @@ export const sendNotification = async (req, res) => {
       title: title.trim(),
       message: message.trim(),
       sentBy: req.admin.email,
+      targetUser: targetUser?.trim() || "", // Now saves correctly!
     });
 
-    // Real-time delivery to all connected users
-    global.io?.emit("newNotification", {
-      _id: notification._id,
-      title: notification.title,
-      message: notification.message,
-      createdAt: notification.createdAt,
-    });
-
+    // We removed the global.io.emit because it's bell-only now.
+    
     return res.json({
       success: true,
-      message: "Notification sent successfully",
+      message: notification.targetUser 
+        ? `Private notification stored for ${notification.targetUser}` 
+        : "Global notification stored for all members",
       notification,
     });
   } catch (err) {
@@ -33,20 +31,12 @@ export const sendNotification = async (req, res) => {
   }
 };
 
-// GET ALL NOTIFICATIONS
+// GET ALL (Admin View)
 export const getNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find()
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return res.json({
-      success: true,
-      total: notifications.length,
-      notifications,
-    });
+    const notifications = await Notification.find().sort({ createdAt: -1 }).lean();
+    return res.json({ success: true, total: notifications.length, notifications });
   } catch (err) {
-    console.error("Get notifications error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
