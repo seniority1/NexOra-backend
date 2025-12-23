@@ -1,9 +1,9 @@
 import Notification from "../models/Notification.js";
 
-// SEND NOTIFICATION (Updated for Targeting)
-export const sendNotification = async (req, res) => {
+// 📢 SEND BROADCAST (Renamed to match routes/admin.js)
+export const sendBroadcast = async (req, res) => {
   try {
-    const { title, message, targetUser } = req.body; // Added targetUser
+    const { title, message, targetUser } = req.body; 
     
     if (!title?.trim() || !message?.trim()) {
       return res.status(400).json({ message: "Title and message are required" });
@@ -12,12 +12,10 @@ export const sendNotification = async (req, res) => {
     const notification = await Notification.create({
       title: title.trim(),
       message: message.trim(),
-      sentBy: req.admin.email,
-      targetUser: targetUser?.trim() || "", // Now saves correctly!
+      sentBy: req.admin.email, // Ensure verifyAdmin middleware provides this
+      targetUser: targetUser?.trim() || "", 
     });
 
-    // We removed the global.io.emit because it's bell-only now.
-    
     return res.json({
       success: true,
       message: notification.targetUser 
@@ -31,12 +29,17 @@ export const sendNotification = async (req, res) => {
   }
 };
 
-// GET ALL (Admin View)
-export const getNotifications = async (req, res) => {
+// 📜 GET ALL NOTIFICATIONS (Renamed to match routes/admin.js)
+export const getAllNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find().sort({ createdAt: -1 }).lean();
-    return res.json({ success: true, total: notifications.length, notifications });
+    return res.json({ 
+      success: true, 
+      total: notifications.length, 
+      notifications 
+    });
   } catch (err) {
+    console.error("Get notifications error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
