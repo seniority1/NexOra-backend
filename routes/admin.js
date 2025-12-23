@@ -1,14 +1,20 @@
 import express from "express";
-import { adminLogin, getAllUsers, addCoins,  } from "../controllers/adminController.js";
+import { 
+  adminLogin, 
+  getAllUsers, 
+  addCoins, 
+  getGiftedUsers, 
+  banUser, 
+  unbanUser, 
+  getSecurityLogs, 
+  sendBroadcast,
+  getAllNotifications // 🚀 Added this to support the History list
+} from "../controllers/adminController.js";
 import verifyAdmin from "../middleware/verifyAdmin.js";
-import { getGiftedUsers } from "../controllers/adminController.js";
-import { banUser, unbanUser } from "../controllers/adminController.js";
-import { getSecurityLogs } from "../controllers/adminController.js";
-import { sendBroadcast } from "../controllers/adminController.js";
-
 
 const router = express.Router();
 
+// --- 🔐 Authentication ---
 // Admin Login
 router.post("/login", adminLogin);
 
@@ -17,25 +23,30 @@ router.get("/me", verifyAdmin, (req, res) => {
   res.json({ success: true, admin: req.admin });
 });
 
-// Fetch all users (protected)
+// --- 👥 User Management ---
+// Fetch all users
 router.get("/users", verifyAdmin, getAllUsers);
 
-// Add coins to a user (protected)
-router.post("/add-coins", verifyAdmin, addCoins);
-
-router.get("/gifted", verifyAdmin, getGiftedUsers);
-
+// Ban/Unban logic
 router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
 
-// ... your existing routes ...
+// --- 💰 Economy ---
+// Add coins to a user
+router.post("/add-coins", verifyAdmin, addCoins);
 
+// View users who received gifts/referrals
+router.get("/gifted", verifyAdmin, getGiftedUsers);
+
+// --- 🛡️ Security ---
+// View system logs
 router.get("/security", verifyAdmin, getSecurityLogs);
 
+// --- 🔔 Notification System ---
+// 📜 Fetch history for the Admin Panel list
+router.get("/notifications", verifyAdmin, getAllNotifications);
+
+// 📢 Send Global Broadcast or Private Message
 router.post("/broadcast", verifyAdmin, sendBroadcast);
-
-           
-
-
 
 export default router;
