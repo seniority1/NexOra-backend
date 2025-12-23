@@ -3,7 +3,8 @@ import Notification from "../models/Notification.js";
 // 📢 1. SEND BROADCAST OR PRIVATE MESSAGE
 export const sendBroadcast = async (req, res) => {
   try {
-    const { title, message, targetUser } = req.body; 
+    // 🚀 Added 'link' to the destructuring
+    const { title, message, targetUser, link } = req.body; 
     
     if (!title?.trim() || !message?.trim()) {
       return res.status(400).json({ message: "Title and message are required" });
@@ -12,6 +13,7 @@ export const sendBroadcast = async (req, res) => {
     const notification = await Notification.create({
       title: title.trim(),
       message: message.trim(),
+      link: link?.trim() || "", // 🚀 Store the WhatsApp or Redirect link
       sentBy: req.admin?.email || "Admin", 
       targetUser: targetUser?.trim() || "", 
     });
@@ -61,10 +63,10 @@ export const getUserNotifications = async (req, res) => {
   }
 };
 
-// 🗑️ 4. DELETE NOTIFICATION (New Function)
+// 🗑️ 4. DELETE NOTIFICATION
 export const deleteNotification = async (req, res) => {
   try {
-    const { id } = req.params; // Grabs the ID from the URL
+    const { id } = req.params; 
     const deleted = await Notification.findByIdAndDelete(id);
 
     if (!deleted) {
