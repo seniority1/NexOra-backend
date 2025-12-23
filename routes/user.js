@@ -9,11 +9,11 @@ import {
 } from "../controllers/userController.js";
 
 // 2. Import Notification Logic 
-// (Ensure the file in /controllers is exactly: usernotificationController.js)
+// 🚀 UPDATED: Pointing to the new renamed file to fix the Render build error
 import { 
   getUserNotifications, 
   markNotificationsRead 
-} from "../controllers/usernotificationController.js"; 
+} from "../controllers/notifController.js"; 
 
 const router = express.Router();
 
