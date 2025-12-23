@@ -6,7 +6,7 @@ import {
   getTransactions 
 } from "../controllers/userController.js";
 
-// Import the new notification controllers
+// 🛠️ FIX: Using lowercase 'u' to match the standard naming convention
 import { 
   getUserNotifications, 
   markNotificationsRead 
