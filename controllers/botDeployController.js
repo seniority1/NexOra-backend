@@ -14,7 +14,6 @@ const COST_TABLE = {
 
 /**
  * 1. FETCH ALL USER BOTS
- * Matches the new schema fields: phoneNumber, status, expiryDate, pairingCode
  */
 export const getUserDeployments = async (req, res) => {
   try {
@@ -29,7 +28,8 @@ export const getUserDeployments = async (req, res) => {
         phoneNumber: b.phoneNumber,
         status: b.status,
         expiryDate: b.expiryDate,
-        pairingCode: b.pairingCode || "Initializing..."
+        pairingCode: b.pairingCode || "Initializing...",
+        latency: b.latency || 0 // Added for the quality indicator
       }))
     });
   } catch (error) {
@@ -38,8 +38,7 @@ export const getUserDeployments = async (req, res) => {
 };
 
 /**
- * 2. DEPLOY BOT
- * Fully aligned with Model: phoneNumber, days, expiryDate
+ * 2. DEPLOY BOT (Universal International Support)
  */
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -55,27 +54,18 @@ export const deployBotToVPS = async (req, res) => {
     const cost = COST_TABLE[days];
     if (user.coins < cost) return res.status(400).json({ success: false, message: "Insufficient coins." });
 
-    const raw = phoneNumber.replace(/[^\d]/g, "");
-    const formattedPhone = raw.startsWith("0") ? "234" + raw.slice(1) : raw;
+    // 🌍 UNIVERSAL FIX: Remove spaces/dashes but KEEP the '+' if user provided it
+    // We no longer force "234" prefix.
+    const formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, "");
 
     const alreadyDeployed = await Deployment.findOne({ phoneNumber: formattedPhone });
     if (alreadyDeployed) return res.status(400).json({ success: false, message: "This number is already active in a slot." });
 
-    // --- TRIGGER VPS HANDSHAKE ---
-    try {
-      await axios.post(`${FACTORY_URL}/deploy`, {
-        phoneNumber: formattedPhone,
-        secret: SECRET_KEY
-      }, { timeout: 10000 }); 
-    } catch (vpsErr) {
-      console.log("⚠️ VPS handshake slow, but proceeding with DB record...");
-    }
-
-    // Deduct coins first
+    // Deduct coins
     user.coins -= cost;
     await user.save();
 
-    // Create record in Database (Fields now match Deployment.js exactly)
+    // Create record in Database
     try {
         await Deployment.create({
             user: user._id,
@@ -87,7 +77,16 @@ export const deployBotToVPS = async (req, res) => {
         });
     } catch (dbError) {
         console.error("❌ MONGODB SAVE ERROR:", dbError.message);
-        // We return success anyway because the VPS has already started the bot
+    }
+
+    // --- TRIGGER VPS HANDSHAKE ---
+    try {
+      await axios.post(`${FACTORY_URL}/deploy`, {
+        phoneNumber: formattedPhone,
+        secret: SECRET_KEY
+      }, { timeout: 10000 }); 
+    } catch (vpsErr) {
+      console.log("⚠️ VPS handshake acknowledged in background.");
     }
 
     return res.json({ 
@@ -99,7 +98,7 @@ export const deployBotToVPS = async (req, res) => {
     console.error("❌ CRITICAL DEPLOY ERROR:", error);
     return res.status(500).json({ 
       success: false, 
-      message: "Internal server error. Please check your balance and try again." 
+      message: "Internal server error." 
     });
   }
 };
@@ -161,16 +160,24 @@ export const deleteBot = async (req, res) => {
 
 /**
  * 6. WEBHOOK: Update Pairing Code (From VPS)
+ * 🚀 Emits Socket signal for Real-time Dashboard update
  */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
   if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
 
   try {
-    await Deployment.findOneAndUpdate(
+    const updated = await Deployment.findOneAndUpdate(
       { phoneNumber },
-      { pairingCode, status: "waiting_pairing" }
+      { pairingCode, status: "waiting_pairing" },
+      { new: true }
     );
+
+    // ⚡ SOCKET TRIGGER: This tells the dashboard to show the code NOW
+    if (global.io) {
+        global.io.emit(`pairing-code-${phoneNumber}`, { code: pairingCode });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
@@ -178,14 +185,23 @@ export const updateBotCode = async (req, res) => {
 };
 
 /**
- * 7. WEBHOOK: Update Status (From VPS)
+ * 7. WEBHOOK: Update Status & Quality (From VPS)
  */
 export const updateBotStatus = async (req, res) => {
-  const { phoneNumber, status, secret } = req.body;
+  const { phoneNumber, status, latency, secret } = req.body;
   if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
 
   try {
-    await Deployment.findOneAndUpdate({ phoneNumber }, { status });
+    const updateData = { status };
+    if (latency !== undefined) updateData.latency = latency;
+
+    await Deployment.findOneAndUpdate({ phoneNumber }, updateData);
+
+    // ⚡ SOCKET TRIGGER: Update status icon and latency meter instantly
+    if (global.io) {
+        global.io.emit(`status-update-${phoneNumber}`, { status, latency });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
