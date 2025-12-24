@@ -23,6 +23,7 @@ export const getUserInfo = async (req, res) => {
       coins: user.coins,
       deployments: user.deployments,
       verified: user.verified,
+      preferences: user.preferences, // Included for settings sync
     });
   } catch (err) {
     console.error("❌ Error fetching user info:", err);
@@ -71,7 +72,7 @@ export const updateCoins = async (req, res) => {
   }
 };
 
-// 📜 Get transaction history (NEW)
+// 📜 Get transaction history
 export const getTransactions = async (req, res) => {
   try {
     const { email } = req.query;
@@ -118,6 +119,82 @@ export const addDeployment = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error adding deployment:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ⚙️ Update User Preferences (NEW: For Settings Page)
+export const updatePreferences = async (req, res) => {
+  try {
+    const { email, preferences } = req.body;
+
+    if (!email || !preferences) {
+      return res.status(400).json({ message: "Email and preferences required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update preferences object
+    user.preferences = { ...user.preferences, ...preferences };
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Preferences updated",
+      preferences: user.preferences,
+    });
+  } catch (err) {
+    console.error("❌ Error updating preferences:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// 📱 Get Active Sessions (NEW: For Session Management)
+export const getSessions = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email }).select("sessions");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json({
+      success: true,
+      sessions: user.sessions,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching sessions:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// 🚪 Logout All Other Devices (NEW: For Session Management)
+export const logoutOthers = async (req, res) => {
+  try {
+    const { email, currentToken } = req.body;
+
+    if (!email || !currentToken) {
+      return res.status(400).json({ message: "Email and current token required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Keep only the session that matches the current token
+    user.sessions = user.sessions.filter((s) => s.token === currentToken);
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Other sessions terminated successfully",
+      sessions: user.sessions,
+    });
+  } catch (err) {
+    console.error("❌ Error clearing sessions:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
