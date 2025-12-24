@@ -13,11 +13,11 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
     },
-    // 📞 ADDED/FIXED: phoneNumber (Clean index)
+    // 📞 phoneNumber (Clean index)
     phoneNumber: {
       type: String,
-      unique: true, // This creates the index automatically
-      sparse: true, // Allows multiple users to have 'null' if phone isn't required
+      unique: true, 
+      sparse: true, 
     },
     password: {
       type: String,
@@ -33,6 +33,15 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
     codeExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    // 🔐 ADDED: Password Reset Fields (Fixes the "Invalid Code" issue)
+    resetCode: {
+      type: String,
+      default: null,
+    },
+    resetCodeExpiresAt: {
       type: Date,
       default: null,
     },
@@ -53,13 +62,13 @@ const userSchema = new mongoose.Schema(
       type: String, 
       default: null,
     },
-    // ⚙️ ADDED: User Preferences for Settings
+    // ⚙️ User Preferences for Settings
     preferences: {
       deployAlerts: { type: Boolean, default: true },
       broadcastAlerts: { type: Boolean, default: true },
       txAlerts: { type: Boolean, default: true }
     },
-    // 📱 ADDED: Session Management for multi-device tracking
+    // 📱 Session Management for multi-device tracking
     sessions: [
       {
         device: { type: String, default: "Unknown Device" },
