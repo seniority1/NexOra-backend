@@ -53,6 +53,21 @@ const userSchema = new mongoose.Schema(
       type: String, 
       default: null,
     },
+    // ⚙️ ADDED: User Preferences for Settings
+    preferences: {
+      deployAlerts: { type: Boolean, default: true },
+      broadcastAlerts: { type: Boolean, default: true },
+      txAlerts: { type: Boolean, default: true }
+    },
+    // 📱 ADDED: Session Management for multi-device tracking
+    sessions: [
+      {
+        device: { type: String, default: "Unknown Device" },
+        ip: { type: String },
+        token: { type: String },
+        lastActive: { type: Date, default: Date.now }
+      }
+    ],
     transactions: [
       {
         amount: Number,
