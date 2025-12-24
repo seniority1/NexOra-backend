@@ -5,7 +5,10 @@ import {
   getUserInfo, 
   updateCoins, 
   addDeployment,
-  getTransactions 
+  getTransactions,
+  updatePreferences, // NEW
+  getSessions,       // NEW
+  logoutOthers       // NEW
 } from "../controllers/userController.js";
 
 // 2. Import Notification Logic 
@@ -29,6 +32,16 @@ router.post("/addDeployment", addDeployment);
 
 // 📜 Fetch the user's transaction history
 router.get("/transactions", getTransactions);
+
+// --- Settings & Session Routes ---
+// ⚙️ Update notification toggles (Deployment, Broadcast, etc.)
+router.post("/update-preferences", updatePreferences);
+
+// 📱 Get list of devices currently logged in
+router.get("/get-sessions", getSessions);
+
+// 🚪 Terminate all sessions except the current one
+router.post("/logout-others", logoutOthers);
 
 // --- Notification Routes ---
 // 🔔 Fetches both Global and Private notifications for the user
