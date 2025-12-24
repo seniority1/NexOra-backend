@@ -47,6 +47,12 @@ export const register = async (req, res) => {
       verificationCode,  
       codeExpiresAt,  
       referredBy: referrer ? referralCode : null,  
+      // Initialize preferences for new users
+      preferences: {
+        deployAlerts: true,
+        broadcastAlerts: true,
+        txAlerts: true
+      }
     });  
 
     await newUser.save();  
@@ -204,8 +210,7 @@ res.status(500).json({ success: false, message: "Resend failed." });
 }
 };
 
-/* 🔐 LOGIN (Now returns JWT token) */
-/* LOGIN (Now blocks banned users) */
+/* 🔐 LOGIN (Now tracks sessions) */
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -213,19 +218,13 @@ export const login = async (req, res) => {
     console.log("Email:", email);
 
     if (!email || !password) {
-      console.log("Missing fields");
       return res.status(400).json({ message: "Email and password required." });
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      console.log("User not found:", email);
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
-    // BLOCK BANNED USERS
     if (user.isBanned) {
-      console.log("BANNED USER TRIED TO LOGIN:", email);
       return res.status(403).json({
         success: false,
         message: "Your account has been suspended.",
@@ -234,24 +233,32 @@ export const login = async (req, res) => {
     }
 
     if (!user.verified) {
-      console.log("Unverified user:", email);
       return res.status(403).json({ message: "Please verify your account first." });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log("Incorrect password for:", email);
-      return res.status(400).json({ message: "Invalid credentials." });
-    }
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials." });
 
-    // Generate JWT Token
+    // 1. Generate JWT Token
     const token = jwt.sign(
       { id: user._id, email: user.email },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    console.log("Login successful for:", email);
+    // 2. Track Session Info
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
+    const device = req.headers['user-agent'] || "Unknown Device";
+
+    // 3. Save session to database array
+    user.sessions.push({ device, ip, token, lastActive: new Date() });
+    
+    // Keep session list clean (optional: only keep last 10 logins)
+    if (user.sessions.length > 10) user.sessions.shift();
+
+    await user.save();
+
+    console.log("Login successful & session recorded for:", email);
 
     res.status(200).json({
       success: true,
@@ -322,22 +329,17 @@ console.log("Reset Code:", resetCode);
 
 if (!email || !resetCode || !newPassword) {  
   console.log("❌ Missing fields");  
-  return res.status(400).json({ message: "All fields are required." });  
+  return res.status(400).json({ message: "All fields required." });  
 }  
 
 const user = await User.findOne({ email });  
-if (!user) {  
-  console.log("❌ User not found for:", email);  
-  return res.status(404).json({ message: "User not found." });  
-}  
+if (!user) return res.status(404).json({ message: "User not found." });  
 
 if (user.resetCode !== resetCode) {  
-  console.log("❌ Invalid reset code for:", email);  
   return res.status(400).json({ message: "Invalid reset code." });  
 }  
 
 if (new Date() > user.resetCodeExpiresAt) {  
-  console.log("⏰ Reset code expired for:", email);  
   return res.status(400).json({ message: "Reset code expired." });  
 }  
 
@@ -360,7 +362,6 @@ res.status(500).json({ success: false, message: "Password reset failed." });
 };
 
 /* 🧩 AUTH MIDDLEWARE */
-/* AUTH MIDDLEWARE — Now blocks banned users */
 export const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -376,7 +377,6 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "User not found." });
     }
 
-    // BLOCK BANNED USERS FROM ACCESSING ANY PROTECTED ROUTE
     if (user.isBanned) {
       return res.status(403).json({
         success: false,
@@ -412,10 +412,7 @@ console.log("\n🧨 [DELETE ACCOUNT REQUEST]");
 const userId = req.user.id;
 
 const user = await User.findById(userId);  
-if (!user) {  
-  console.log("❌ User not found:", userId);  
-  return res.status(404).json({ message: "User not found." });  
-}  
+if (!user) return res.status(404).json({ message: "User not found." });  
 
 await user.deleteOne();  
 
@@ -432,13 +429,10 @@ res.status(500).json({ message: "Server error deleting account." });
 }
 };
 
-/* 📧 Helper: Send email using Resend API with full logging */
+/* 📧 Helper: Send email using Resend API */
 async function sendEmail({ to, subject, html }) {
 try {
-if (!process.env.RESEND_API_KEY) {
-console.error("🚨 Missing RESEND_API_KEY in environment variables!");
-return;
-}
+if (!process.env.RESEND_API_KEY) return;
 
 const payload = {  
   from: "NexOra <noreply@nexora.org.ng>",
@@ -448,11 +442,8 @@ const payload = {
 };  
 
 console.log("📦 Sending email to:", to);  
-const result = await resend.emails.send(payload);  
-console.log("✅ Email sent successfully:", result);
-
+await resend.emails.send(payload);  
 } catch (err) {
 console.error("❌ Email sending failed:", err.message);
-if (err.response) console.error("📨 Resend API Response:", err.response);
 }
 }
