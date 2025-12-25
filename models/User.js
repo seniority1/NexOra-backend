@@ -13,7 +13,6 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
     },
-    // 📞 phoneNumber (Clean index)
     phoneNumber: {
       type: String,
       unique: true, 
@@ -36,7 +35,6 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // 🔐 ADDED: Password Reset Fields (Fixes the "Invalid Code" issue)
     resetCode: {
       type: String,
       default: null,
@@ -50,6 +48,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // 🔔 NEW: Flag to prevent duplicate "0 coins" notifications
+    notifiedExpiry: {
+      type: Boolean,
+      default: false,
+    },
     pendingReferralCoins: {
       type: Number,
       default: 0,
@@ -62,13 +65,11 @@ const userSchema = new mongoose.Schema(
       type: String, 
       default: null,
     },
-    // ⚙️ User Preferences for Settings
     preferences: {
       deployAlerts: { type: Boolean, default: true },
       broadcastAlerts: { type: Boolean, default: true },
       txAlerts: { type: Boolean, default: true }
     },
-    // 📱 Session Management for multi-device tracking
     sessions: [
       {
         device: { type: String, default: "Unknown Device" },
@@ -90,10 +91,12 @@ const userSchema = new mongoose.Schema(
         name: String,
         status: {
           type: String,
-          enum: ["active", "paused", "deleted"],
+          enum: ["active", "paused", "deleted", "expired"], // 🔔 ADDED: "expired"
           default: "active",
         },
         createdAt: { type: Date, default: Date.now },
+        // 🔔 NEW: Track exactly when this bot should stop
+        expiresAt: { type: Date }, 
       },
     ],
     isBanned: {
