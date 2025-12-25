@@ -20,11 +20,7 @@ export const getUserNotifications = async (req, res) => {
       ]
     }).sort({ createdAt: -1 }); // Newest first
 
-    // ✅ FIX: Wrap in an object to match the Frontend expectations
-    res.status(200).json({
-      success: true,
-      notifications: notifications
-    });
+    res.status(200).json(notifications);
   } catch (err) {
     console.error("❌ Error fetching notifications:", err);
     res.status(500).json({ message: "Server error" });
@@ -52,11 +48,6 @@ export const markNotificationsRead = async (req, res) => {
       },
       { $addToSet: { readBy: email } }
     );
-
-    // 🚀 LIVE SYNC: Tell the frontend to refresh its notification count/UI
-    if (global.io) {
-      global.io.to(email).emit("notificationsRead", { email });
-    }
 
     res.status(200).json({ success: true, message: "Notifications marked as read" });
   } catch (err) {
