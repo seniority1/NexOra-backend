@@ -1,4 +1,24 @@
 import User from "../models/User.js";
+import Notification from "../models/Notification.js"; // Import your notification model
+
+// 🛡️ Helper: Creates a private notification ONLY if the specific toggle is ON
+const createPrivateNotification = async (user, type, message) => {
+  try {
+    // Check if the preference exists and is set to true
+    if (user.preferences && user.preferences[type] === true) {
+      await Notification.create({
+        title: "NexOra System",
+        message: message,
+        targetUser: user.email,
+        type: "system",
+        readBy: []
+      });
+      console.log(`🔔 Notification created for ${user.email} (Type: ${type})`);
+    }
+  } catch (err) {
+    console.error("❌ Notification Helper Error:", err);
+  }
+};
 
 // 🧠 Get user info (dashboard)
 export const getUserInfo = async (req, res) => {
@@ -23,7 +43,7 @@ export const getUserInfo = async (req, res) => {
       coins: user.coins,
       deployments: user.deployments,
       verified: user.verified,
-      preferences: user.preferences, // Included for settings sync
+      preferences: user.preferences, 
     });
   } catch (err) {
     console.error("❌ Error fetching user info:", err);
@@ -43,16 +63,13 @@ export const updateCoins = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Prevent negative coin balance
     const newBalance = user.coins + Number(amount);
     if (newBalance < 0) {
       return res.status(400).json({ message: "Insufficient balance" });
     }
 
-    // Update balance
     user.coins = newBalance;
 
-    // Log a transaction
     user.transactions.push({
       amount,
       type: type || (amount > 0 ? "purchase" : "spend"),
@@ -60,6 +77,13 @@ export const updateCoins = async (req, res) => {
     });
 
     await user.save();
+
+    // 📣 EXECUTION: Trigger alert if balance hits zero
+    if (user.coins <= 0) {
+      await createPrivateNotification(user, 'txAlerts', "⚠️ Alert: Your NexOra coins have expired!");
+    } else if (amount > 0) {
+      await createPrivateNotification(user, 'txAlerts', `💎 Success: ${amount} coins added to your account.`);
+    }
 
     res.status(200).json({
       success: true,
@@ -86,7 +110,7 @@ export const getTransactions = async (req, res) => {
 
     res.json({
       success: true,
-      transactions: user.transactions.reverse(), // newest first
+      transactions: user.transactions.reverse(),
     });
   } catch (err) {
     console.error("Transaction History Error:", err.message);
@@ -112,6 +136,9 @@ export const addDeployment = async (req, res) => {
     user.deployments.push(newDeployment);
     await user.save();
 
+    // 📣 EXECUTION: Trigger deployment alert automatically
+    await createPrivateNotification(user, 'deployAlerts', `🚀 Bot Deployed: Your bot "${name}" is now active!`);
+
     res.status(200).json({
       success: true,
       message: "Deployment added successfully",
@@ -123,7 +150,7 @@ export const addDeployment = async (req, res) => {
   }
 };
 
-// ⚙️ Update User Preferences (NEW: For Settings Page)
+// ⚙️ Update User Preferences
 export const updatePreferences = async (req, res) => {
   try {
     const { email, preferences } = req.body;
@@ -135,7 +162,6 @@ export const updatePreferences = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Update preferences object
     user.preferences = { ...user.preferences, ...preferences };
     await user.save();
 
@@ -150,7 +176,7 @@ export const updatePreferences = async (req, res) => {
   }
 };
 
-// 📱 Get Active Sessions (NEW: For Session Management)
+// 📱 Get Active Sessions
 export const getSessions = async (req, res) => {
   try {
     const { email } = req.query;
@@ -172,7 +198,7 @@ export const getSessions = async (req, res) => {
   }
 };
 
-// 🚪 Logout All Other Devices (NEW: For Session Management)
+// 🚪 Logout All Other Devices
 export const logoutOthers = async (req, res) => {
   try {
     const { email, currentToken } = req.body;
@@ -184,7 +210,6 @@ export const logoutOthers = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Keep only the session that matches the current token
     user.sessions = user.sessions.filter((s) => s.token === currentToken);
     await user.save();
 
