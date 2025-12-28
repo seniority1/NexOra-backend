@@ -15,8 +15,8 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      // unique: true and sparse: true moved to schema.index below to fix warning
-      default: null,
+      // ✅ FIX: Removed default: null. 
+      // This allows the sparse index to ignore empty phone numbers during registration.
     },
     password: {
       type: String,
@@ -116,7 +116,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Fixes "Duplicate schema index" warning by defining index explicitly
+// ✅ Define index explicitly to fix warnings and handle optional unique phone numbers
 userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
 
 userSchema.pre("save", function (next) {
