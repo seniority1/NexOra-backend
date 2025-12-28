@@ -16,18 +16,15 @@ import adminNotificationsRoutes from "./routes/adminNotifications.js";
 
 import "./cron/dailyReport.js"; 
 import Admin from "./models/Admin.js";
-import User from "./models/User.js"; // Needed for the watcher
-import Notification from "./models/Notification.js"; // Needed for auto-alerts
+import User from "./models/User.js"; 
+import Notification from "./models/Notification.js"; 
 import bcrypt from "bcrypt";
 
 dotenv.config();
 
 const app = express();
-
-// Create HTTP server (required for Socket.io)
 const server = http.createServer(app);
 
-// Initialize Socket.io
 const io = new Server(server, {
   cors: {
     origin: "*", 
@@ -36,9 +33,6 @@ const io = new Server(server, {
   }
 });
 
-/**
- * 🚀 GLOBAL SOCKET ACCESS
- */
 global.io = io;
 
 io.on("connection", (socket) => {
@@ -48,7 +42,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Middleware
 app.use(express.json());
 app.use(cors());
 
@@ -64,13 +57,11 @@ app.use("/api/admin", adminNotificationsRoutes);
 
 /**
  * 🕵️‍♂️ AUTOMATIC BACKGROUND WATCHER
- * Runs every minute to handle Bot Expiry and Coin Expiry alerts.
- * Respects User Preferences (Settings Toggles).
+ * Updated to fix Mongoose Validation Errors
  */
 setInterval(async () => {
   try {
     const now = new Date();
-    // Find users with active bots OR users who have 0 coins but haven't been notified
     const activeUsers = await User.find({
       $or: [
         { "deployments.status": "active" },
@@ -87,13 +78,13 @@ setInterval(async () => {
           bot.status = "expired";
           userUpdated = true;
 
-          // Trigger Alert only if toggle is ON
           if (user.preferences?.deployAlerts) {
             await Notification.create({
               title: "Bot Stopped",
               message: `🛑 Alert: Your bot "${bot.name}" has finished its deployment period.`,
               targetUser: user.email,
-              type: "system"
+              sentBy: "NexOra System", // ✅ FIXED: Added required field
+              readBy: []
             });
           }
         }
@@ -104,17 +95,17 @@ setInterval(async () => {
         user.notifiedExpiry = true;
         userUpdated = true;
 
-        // Trigger Alert only if toggle is ON
         if (user.preferences?.txAlerts) {
           await Notification.create({
             title: "Coins Expired",
             message: "⚠️ Alert: Your NexOra coins have reached 0. Refill to resume deployments.",
             targetUser: user.email,
-            type: "system"
+            sentBy: "NexOra System", // ✅ FIXED: Added required field
+            readBy: []
           });
         }
       } else if (user.coins > 0 && user.notifiedExpiry) {
-        user.notifiedExpiry = false; // Reset if they topped up
+        user.notifiedExpiry = false; 
         userUpdated = true;
       }
 
@@ -123,11 +114,11 @@ setInterval(async () => {
       }
     }
   } catch (err) {
-    console.error("❌ Background Watcher Error:", err);
+    console.error("❌ Background Watcher Error:", err.message);
   }
-}, 60000); // 1-minute interval
+}, 60000);
 
-// MongoDB Connection + Admin IP Lockdown
+// MongoDB Connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
@@ -145,13 +136,13 @@ mongoose
       const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 12);
       await new Admin({
         name: "Alphonsus Okoko",
-        email: process.env.ADMIN_EMAIL,
+        email: adminEmail,
         passwordHash: hash,
         allowedIPs: ["197.211.63.149"], 
         trustedDevices: [],
       }).save();
 
-      console.log("Admin created + IP 197.211.63.149 HARD-CODED");
+      console.log("Admin created + IP Whitelisted");
     } else {
       await Admin.updateOne(
         { email: adminEmail },
@@ -165,7 +156,6 @@ mongoose
     process.exit(1);
   });
 
-// Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`NexOra Backend + Socket.io LIVE on port ${PORT}`);
