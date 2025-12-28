@@ -1,22 +1,21 @@
 import User from "../models/User.js";
-import Notification from "../models/Notification.js"; // Import your notification model
+import Notification from "../models/Notification.js";
 
 // 🛡️ Helper: Creates a private notification ONLY if the specific toggle is ON
 const createPrivateNotification = async (user, type, message) => {
   try {
-    // Check if the preference exists and is set to true
     if (user.preferences && user.preferences[type] === true) {
       await Notification.create({
         title: "NexOra System",
         message: message,
         targetUser: user.email,
-        type: "system",
+        sentBy: "NexOra System", // ✅ Fixed: Added required field from Notification model
         readBy: []
       });
       console.log(`🔔 Notification created for ${user.email} (Type: ${type})`);
     }
   } catch (err) {
-    console.error("❌ Notification Helper Error:", err);
+    console.error("❌ Notification Helper Error:", err.message);
   }
 };
 
@@ -46,7 +45,7 @@ export const getUserInfo = async (req, res) => {
       preferences: user.preferences, 
     });
   } catch (err) {
-    console.error("❌ Error fetching user info:", err);
+    console.error("❌ Error fetching user info:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -68,11 +67,18 @@ export const updateCoins = async (req, res) => {
       return res.status(400).json({ message: "Insufficient balance" });
     }
 
+    // ✅ Enum Guard: Ensure type matches User model ["purchase", "spend", "reward"]
+    const allowedTypes = ["purchase", "spend", "reward"];
+    let finalType = type || (amount > 0 ? "purchase" : "spend");
+    if (!allowedTypes.includes(finalType)) {
+      finalType = amount > 0 ? "purchase" : "spend";
+    }
+
     user.coins = newBalance;
 
     user.transactions.push({
       amount,
-      type: type || (amount > 0 ? "purchase" : "spend"),
+      type: finalType,
       description: description || "Balance update",
     });
 
@@ -91,8 +97,8 @@ export const updateCoins = async (req, res) => {
       coins: user.coins,
     });
   } catch (err) {
-    console.error("❌ Error updating coins:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error updating coins:", err.message);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -145,7 +151,7 @@ export const addDeployment = async (req, res) => {
       deployments: user.deployments,
     });
   } catch (err) {
-    console.error("❌ Error adding deployment:", err);
+    console.error("❌ Error adding deployment:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -171,7 +177,7 @@ export const updatePreferences = async (req, res) => {
       preferences: user.preferences,
     });
   } catch (err) {
-    console.error("❌ Error updating preferences:", err);
+    console.error("❌ Error updating preferences:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -193,7 +199,7 @@ export const getSessions = async (req, res) => {
       sessions: user.sessions,
     });
   } catch (err) {
-    console.error("❌ Error fetching sessions:", err);
+    console.error("❌ Error fetching sessions:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -219,7 +225,7 @@ export const logoutOthers = async (req, res) => {
       sessions: user.sessions,
     });
   } catch (err) {
-    console.error("❌ Error clearing sessions:", err);
+    console.error("❌ Error clearing sessions:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
