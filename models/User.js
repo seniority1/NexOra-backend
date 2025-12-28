@@ -15,8 +15,8 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      unique: true, 
-      sparse: true, 
+      // unique: true and sparse: true moved to schema.index below to fix warning
+      default: null,
     },
     password: {
       type: String,
@@ -48,7 +48,7 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // 🔔 NEW: Flag to prevent duplicate "0 coins" notifications
+    // 🔔 Flag to prevent duplicate "0 coins" notifications
     notifiedExpiry: {
       type: Boolean,
       default: false,
@@ -91,11 +91,10 @@ const userSchema = new mongoose.Schema(
         name: String,
         status: {
           type: String,
-          enum: ["active", "paused", "deleted", "expired"], // 🔔 ADDED: "expired"
+          enum: ["active", "paused", "deleted", "expired"], 
           default: "active",
         },
         createdAt: { type: Date, default: Date.now },
-        // 🔔 NEW: Track exactly when this bot should stop
         expiresAt: { type: Date }, 
       },
     ],
@@ -116,6 +115,9 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ Fixes "Duplicate schema index" warning by defining index explicitly
+userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
 
 userSchema.pre("save", function (next) {
   if (!this.referralCode) {
