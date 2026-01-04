@@ -5,7 +5,7 @@ import {
   stopBot, 
   restartBot, 
   deleteBot,
-  // ADD THESE TWO NEW FUNCTIONS BELOW
+  resetAuth, // Added this import
   updateBotCode,
   updateBotStatus
 } from "../controllers/botDeployController.js";
@@ -37,6 +37,12 @@ router.post("/restart", authMiddleware, restartBot);
  * @route   POST /api/bot/delete
  */
 router.post("/delete", authMiddleware, deleteBot);
+
+/**
+ * @route   POST /api/bot/reset-auth
+ * @desc    Wipes session folder on VPS and requests new pairing code
+ */
+router.post("/reset-auth", authMiddleware, resetAuth); // Added this route
 
 // --- 🛡️ VPS WEBHOOK ROUTES (NO AUTH MIDDLEWARE) ---
 
