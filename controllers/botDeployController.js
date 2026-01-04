@@ -159,35 +159,6 @@ export const deleteBot = async (req, res) => {
 };
 
 /**
- * 8. RESET AUTH (Wipe Session Only)
- * Allows re-pairing without deleting the database slot.
- */
-export const resetAuth = async (req, res) => {
-  try {
-    const { phoneNumber } = req.body;
-    const user = await User.findOne({ email: req.user.email });
-
-    // 1. Tell VPS to wipe the session folder/files for this number
-    await axios.post(`${FACTORY_URL}/reset-session`, { 
-      phoneNumber, 
-      secret: SECRET_KEY 
-    });
-
-    // 2. Update DB: Set status back to initializing so the user sees a "Warming up" state
-    await Deployment.findOneAndUpdate(
-      { user: user._id, phoneNumber },
-      { status: "initializing", pairingCode: "Resetting..." }
-    );
-
-    res.json({ success: true, message: "Session wiped. Requesting new pairing code..." });
-  } catch (error) {
-    console.error("Reset Auth Error:", error);
-    res.status(500).json({ success: false, message: "Failed to reset session." });
-  }
-};
-
-
-/**
  * 6. WEBHOOK: Update Pairing Code (From VPS)
  * 🚀 Emits Socket signal for Real-time Dashboard update
  */
