@@ -1,4 +1,4 @@
-Import axios from "axios";
+import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
@@ -29,7 +29,7 @@ export const getUserDeployments = async (req, res) => {
         status: b.status,
         expiryDate: b.expiryDate,
         pairingCode: b.pairingCode || "Initializing...",
-        latency: b.latency || 0 // Added for the quality indicator
+        latency: b.latency || 0 
       }))
     });
   } catch (error) {
@@ -54,8 +54,6 @@ export const deployBotToVPS = async (req, res) => {
     const cost = COST_TABLE[days];
     if (user.coins < cost) return res.status(400).json({ success: false, message: "Insufficient coins." });
 
-    // 🌍 UNIVERSAL FIX: Remove spaces/dashes but KEEP the '+' if user provided it
-    // We no longer force "234" prefix.
     const formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, "");
 
     const alreadyDeployed = await Deployment.findOne({ phoneNumber: formattedPhone });
@@ -130,7 +128,7 @@ export const stopBot = async (req, res) => {
 export const restartBot = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
-    await axios.post(`${FACTORY_URL}/deploy`, { phoneNumber, secret: SECRET_KEY }, { timeout: 8000 });
+    await axios.post(`${FACTORY_URL}/restart`, { phoneNumber, secret: SECRET_KEY }, { timeout: 8000 });
     
     await Deployment.findOneAndUpdate({ phoneNumber }, { status: "restarting" });
     
@@ -159,21 +157,48 @@ export const deleteBot = async (req, res) => {
 };
 
 /**
+ * 8. RESET AUTH (Logout / Wipe Session Only)
+ * Allows re-pairing without deleting the database slot.
+ */
+export const resetAuth = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    const user = await User.findOne({ email: req.user.email });
+
+    // 1. Tell VPS to wipe the session folder (calls the new /logout route)
+    await axios.post(`${FACTORY_URL}/logout`, { 
+      phoneNumber, 
+      secret: SECRET_KEY 
+    });
+
+    // 2. Update DB: Set status back to initializing
+    await Deployment.findOneAndUpdate(
+      { user: user._id, phoneNumber },
+      { status: "initializing", pairingCode: "Resetting..." }
+    );
+
+    res.json({ success: true, message: "Session wiped. Requesting new pairing code..." });
+  } catch (error) {
+    console.error("Reset Auth Error:", error);
+    res.status(500).json({ success: false, message: "Failed to reset session." });
+  }
+};
+
+
+/**
  * 6. WEBHOOK: Update Pairing Code (From VPS)
- * 🚀 Emits Socket signal for Real-time Dashboard update
  */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
   if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
 
   try {
-    const updated = await Deployment.findOneAndUpdate(
+    await Deployment.findOneAndUpdate(
       { phoneNumber },
       { pairingCode, status: "waiting_pairing" },
       { new: true }
     );
 
-    // ⚡ SOCKET TRIGGER: This tells the dashboard to show the code NOW
     if (global.io) {
         global.io.emit(`pairing-code-${phoneNumber}`, { code: pairingCode });
     }
@@ -197,7 +222,6 @@ export const updateBotStatus = async (req, res) => {
 
     await Deployment.findOneAndUpdate({ phoneNumber }, updateData);
 
-    // ⚡ SOCKET TRIGGER: Update status icon and latency meter instantly
     if (global.io) {
         global.io.emit(`status-update-${phoneNumber}`, { status, latency });
     }
