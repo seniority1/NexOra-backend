@@ -1,4 +1,4 @@
-Import axios from "axios";
+import axios from "axios";
 import Deployment from "../models/Deployment.js";
 import User from "../models/User.js";
 
