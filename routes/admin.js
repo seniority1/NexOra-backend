@@ -10,7 +10,8 @@ import {
   unbanUser, 
   getSecurityLogs,
   getAllDeployments,
-  deleteDeployment // 👈 ADDED THIS FOR THE KILL SWITCH
+  deleteDeployment,   // 🗑️ Delete specific bot engines
+  deleteUserAccount   // 👤 Delete user accounts permanently (ADDED)
 } from "../controllers/adminController.js";
 
 // 2. 🚀 Notification Logic
@@ -35,12 +36,15 @@ router.get("/users", verifyAdmin, getAllUsers);
 router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
 
+// 🗑️ Delete a user account from MongoDB via its ID
+router.delete("/users/:id", verifyAdmin, deleteUserAccount); // 👈 ADDED THIS ROUTE
+
 // --- 🤖 Bot Management (Active Engines) ---
 // 🚀 Fetches all active NexOra engines for the table
 router.get("/deployments", verifyAdmin, getAllDeployments); 
 
 // 🗑️ Deletes a specific engine from MongoDB via its ID
-router.delete("/deployments/:id", verifyAdmin, deleteDeployment); // 👈 ADDED THIS ROUTE
+router.delete("/deployments/:id", verifyAdmin, deleteDeployment); 
 
 // --- 💰 Economy ---
 router.post("/add-coins", verifyAdmin, addCoins);
