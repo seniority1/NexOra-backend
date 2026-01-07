@@ -1,6 +1,6 @@
 import express from "express";
 
-// 1. Core Admin Logic (From adminController.js)
+// 1. Core Admin Logic
 import { 
   adminLogin, 
   getAllUsers, 
@@ -8,11 +8,11 @@ import {
   getGiftedUsers, 
   banUser, 
   unbanUser, 
-  getSecurityLogs 
+  getSecurityLogs,
+  getAllDeployments // 👈 ADDED THIS
 } from "../controllers/adminController.js";
 
-// 2. 🚀 Notification Logic (From the specialized adminNotifications.js)
-// These names MUST match the exports in your controller exactly
+// 2. 🚀 Notification Logic
 import { 
   sendBroadcast, 
   getAllNotifications 
@@ -34,6 +34,10 @@ router.get("/users", verifyAdmin, getAllUsers);
 router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
 
+// --- 🤖 Bot Management (Active Engines) ---
+// 🚀 This is what updates the "0" to the real count on your dashboard
+router.get("/deployments", verifyAdmin, getAllDeployments); 
+
 // --- 💰 Economy ---
 router.post("/add-coins", verifyAdmin, addCoins);
 router.get("/gifted", verifyAdmin, getGiftedUsers);
@@ -42,10 +46,7 @@ router.get("/gifted", verifyAdmin, getGiftedUsers);
 router.get("/security", verifyAdmin, getSecurityLogs);
 
 // --- 🔔 Notification System ---
-// 📜 Matches the function name: getAllNotifications
 router.get("/notifications", verifyAdmin, getAllNotifications);
-
-// 📢 Matches the function name: sendBroadcast
 router.post("/broadcast", verifyAdmin, sendBroadcast);
 
 export default router;
