@@ -259,6 +259,28 @@ export const deleteUserAccount = async (req, res) => {
   }
 };
 
+/* ==========================================================
+   CLEAR ALL GIFT LOGS (Database Wipe)
+   ========================================================== */
+export const clearGiftLogs = async (req, res) => {
+  try {
+    // This removes every document inside the GiftLog collection
+    const result = await GiftLog.deleteMany({});
+    
+    console.log(`[ADMIN ACTION] Gift Ledger was cleared by ${req.admin.email}. ${result.deletedCount} records removed.`);
+
+    return res.json({ 
+      success: true, 
+      message: "The gift ledger has been permanently cleared." 
+    });
+  } catch (err) {
+    console.error("Clear Logs Error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error while clearing logs." 
+    });
+  }
+};
 
 
 
