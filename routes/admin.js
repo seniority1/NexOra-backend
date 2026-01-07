@@ -9,7 +9,8 @@ import {
   banUser, 
   unbanUser, 
   getSecurityLogs,
-  getAllDeployments // 👈 ADDED THIS
+  getAllDeployments,
+  deleteDeployment // 👈 ADDED THIS FOR THE KILL SWITCH
 } from "../controllers/adminController.js";
 
 // 2. 🚀 Notification Logic
@@ -35,8 +36,11 @@ router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
 
 // --- 🤖 Bot Management (Active Engines) ---
-// 🚀 This is what updates the "0" to the real count on your dashboard
+// 🚀 Fetches all active NexOra engines for the table
 router.get("/deployments", verifyAdmin, getAllDeployments); 
+
+// 🗑️ Deletes a specific engine from MongoDB via its ID
+router.delete("/deployments/:id", verifyAdmin, deleteDeployment); // 👈 ADDED THIS ROUTE
 
 // --- 💰 Economy ---
 router.post("/add-coins", verifyAdmin, addCoins);
