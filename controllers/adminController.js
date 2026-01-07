@@ -228,6 +228,38 @@ export const deleteDeployment = async (req, res) => {
   }
 };
 
+/* ==========================================================
+   DELETE USER ACCOUNT (Full Wipe)
+   ========================================================== */
+export const deleteUserAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Find the user first to get their email (for logging)
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 2. Delete all active bot deployments belonging to this user
+    const deletedBots = await Deployment.deleteMany({ ownerEmail: user.email });
+
+    // 3. Delete the actual user account
+    await User.findByIdAndDelete(id);
+
+    console.log(`[ADMIN ACTION] User ${user.email} and ${deletedBots.deletedCount} bots were permanently removed.`);
+
+    res.json({ 
+      success: true, 
+      message: `User ${user.name} and their active bots have been deleted.` 
+    });
+  } catch (err) {
+    console.error("Delete User Error:", err);
+    res.status(500).json({ success: false, message: "Internal server error during deletion." });
+  }
+};
+
+
 
 
 /* ==========================================================
