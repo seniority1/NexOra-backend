@@ -6,12 +6,13 @@ import {
   getAllUsers, 
   addCoins, 
   getGiftedUsers, 
+  clearGiftLogs,      // 👈 ADDED: Logic to wipe the ledger
   banUser, 
   unbanUser, 
   getSecurityLogs,
   getAllDeployments,
-  deleteDeployment,   // 🗑️ Delete specific bot engines
-  deleteUserAccount   // 👤 Delete user accounts permanently (ADDED)
+  deleteDeployment,   
+  deleteUserAccount   
 } from "../controllers/adminController.js";
 
 // 2. 🚀 Notification Logic
@@ -37,7 +38,7 @@ router.post("/ban", verifyAdmin, banUser);
 router.post("/unban", verifyAdmin, unbanUser);
 
 // 🗑️ Delete a user account from MongoDB via its ID
-router.delete("/users/:id", verifyAdmin, deleteUserAccount); // 👈 ADDED THIS ROUTE
+router.delete("/users/:id", verifyAdmin, deleteUserAccount); 
 
 // --- 🤖 Bot Management (Active Engines) ---
 // 🚀 Fetches all active NexOra engines for the table
@@ -49,6 +50,7 @@ router.delete("/deployments/:id", verifyAdmin, deleteDeployment);
 // --- 💰 Economy ---
 router.post("/add-coins", verifyAdmin, addCoins);
 router.get("/gifted", verifyAdmin, getGiftedUsers);
+router.delete("/gift-logs/clear", verifyAdmin, clearGiftLogs); // 👈 ADDED: Connects to your "Clear All" button
 
 // --- 🛡️ Security ---
 router.get("/security", verifyAdmin, getSecurityLogs);
