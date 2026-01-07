@@ -5,6 +5,8 @@ import LoginAudit from "../models/LoginAudit.js";
 import User from "../models/User.js";
 import GiftLog from "../models/GiftLog.js";        // ← NEW: Gift logging
 import Broadcast from "../models/Broadcast.js";
+import Deployment from "../models/Deployment.js";
+
 
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -251,6 +253,30 @@ export const unbanUser = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+/* ==========================================================
+   GET ALL DEPLOYMENTS (The "Active Bots" View)
+   ========================================================== */
+export const getAllDeployments = async (req, res) => {
+  try {
+    // We populate the user to see who owns each bot
+    const bots = await Deployment.find()
+      .populate("user", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      total: bots.length,
+      activeCount: bots.filter(b => b.status === "online").length,
+      bots
+    });
+  } catch (err) {
+    console.error("Fetch deployments failed:", err);
+    return res.status(500).json({ message: "Server error fetching bots" });
+  }
+};
+
 
 // GET SECURITY LOGS — All login attempts, bans, etc
 export const getSecurityLogs = async (req, res) => {
