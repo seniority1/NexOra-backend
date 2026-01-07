@@ -205,6 +205,31 @@ export const getAllDeployments = async (req, res) => {
   }
 };
 
+// DELETE DEPLOYMENT
+export const deleteDeployment = async (req, res) => {
+  try {
+    const { id } = req.params; // Get ID from URL
+    
+    const bot = await Deployment.findByIdAndDelete(id);
+    
+    if (!bot) {
+      return res.status(404).json({ success: false, message: "Bot not found" });
+    }
+
+    console.log(`[ADMIN] Bot for ${bot.phoneNumber} was deleted by ${req.admin.email}`);
+    
+    return res.json({
+      success: true,
+      message: `Engine for ${bot.phoneNumber} has been permanently deleted.`
+    });
+  } catch (err) {
+    console.error("Delete Error:", err);
+    return res.status(500).json({ success: false, message: "Error deleting bot" });
+  }
+};
+
+
+
 /* ==========================================================
    SECURITY LOGS & BROADCAST
    ========================================================== */
