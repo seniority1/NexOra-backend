@@ -210,7 +210,7 @@ res.status(500).json({ success: false, message: "Resend failed." });
 }
 };
 
-/* 🔐 LOGIN (Now tracks sessions) */
+/* 🔐 LOGIN (Now tracks sessions and Admin "Time Ago" stats) */
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -250,7 +250,10 @@ export const login = async (req, res) => {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || "unknown";
     const device = req.headers['user-agent'] || "Unknown Device";
 
-    // 3. Save session to database array
+    // 🔥 3. Update Last Active for Admin Dashboard
+    user.lastLoginAt = new Date();
+
+    // 4. Save session to database array
     user.sessions.push({ device, ip, token, lastActive: new Date() });
     
     // Keep session list clean (optional: only keep last 10 logins)
