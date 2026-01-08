@@ -48,6 +48,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // 🔥 NEW: Specifically for the Admin User Table "Time Ago" logic
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
     // 🔔 Flag to prevent duplicate "0 coins" notifications
     notifiedExpiry: {
       type: Boolean,
