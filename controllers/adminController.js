@@ -87,12 +87,21 @@ export const adminLogin = async (req, res) => {
    ========================================================== */
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({}, "name email coins createdAt").sort({ createdAt: -1 });
-    return res.json({ success: true, total: users.length, users });
+    // 🔥 UPDATED: Added lastLoginAt to the projection string
+    const users = await User.find({}, "name email coins createdAt lastLoginAt")
+      .sort({ createdAt: -1 });
+
+    return res.json({ 
+      success: true, 
+      total: users.length, 
+      users 
+    });
   } catch (err) {
+    console.error("Fetch Users Error:", err);
     return res.status(500).json({ message: "Server error fetching users" });
   }
 };
+
 
 /* ==========================================================
    ADD COINS + LOG GIFT
