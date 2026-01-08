@@ -29,10 +29,10 @@ export const getMessages = async (req, res) => {
   }
 };
 
-// 🗑️ DELETE a specific message (The Missing Piece)
+// 🗑️ DELETE a specific message (By ID)
 export const deleteMessage = async (req, res) => {
   try {
-    const { id } = req.params; // Get ID from the URL
+    const { id } = req.params; 
     const deletedMessage = await Message.findByIdAndDelete(id);
 
     if (!deletedMessage) {
@@ -43,5 +43,21 @@ export const deleteMessage = async (req, res) => {
   } catch (error) {
     console.error("NexOra Delete Error:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 🧹 WIPE ALL messages (Bulk Cleanup for NexOra Optimization)
+export const wipeAllMessages = async (req, res) => {
+  try {
+    // deleteMany({}) targets every document in the collection
+    const result = await Message.deleteMany({});
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: `NexOra Engine Optimized: ${result.deletedCount} records purged.` 
+    });
+  } catch (error) {
+    console.error("NexOra Bulk Wipe Error:", error);
+    return res.status(500).json({ error: "Bulk wipe failed to execute" });
   }
 };
