@@ -22,12 +22,12 @@ function issueToken(admin) {
 }
 
 /* ==========================================================
-   ADMIN LOGIN
+   ADMIN LOGIN (WITH DEVICE TRAP)
    ========================================================== */
 export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
-    const ip = MY_IP;
+    const ip = req.ip || req.connection.remoteAddress; // Dynamic IP detection
     const ua = req.get("user-agent") || "Unknown Device";
 
     const auditBase = {
@@ -50,19 +50,40 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    if (admin.allowedIPs?.length > 0 && !admin.allowedIPs.includes(ip)) {
-      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "IP blocked" });
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const fingerprint = deviceFingerprint || "none";
+    // 1. Check if device is trusted
+    const fingerprint = deviceFingerprint || "not-provided";
     const isTrusted = admin.trustedDevices.some((d) => d.fingerprint === fingerprint);
     const isVeryFirstLoginEver = admin.trustedDevices.length === 0;
 
-    if (!isTrusted && !isVeryFirstLoginEver && fingerprint !== "not-provided") {
-      return res.status(403).json({ message: "New device detected. Manual approval required." });
+    // 🔥 THE DEVICE TRAP: Password is correct, but device is unknown
+    if (!isTrusted && !isVeryFirstLoginEver) {
+      
+      // Update the admin document to include this attempt in a 'pendingApproval' array
+      // This is what your Device Page will fetch
+      await Admin.updateOne(
+        { _id: admin._id },
+        { 
+          $addToSet: { 
+            pendingDevices: { 
+              fingerprint, 
+              deviceInfo: ua.substring(0, 100), 
+              ip, 
+              attemptedAt: new Date() 
+            } 
+          } 
+        }
+      );
+
+      await LoginAudit.create({ ...auditBase, admin: admin._id, success: false, reason: "Device Pending Approval" });
+      
+      return res.status(403).json({ 
+        success: false, 
+        needsApproval: true,
+        message: "Device not recognized. Approval request sent to primary administrator." 
+      });
     }
 
+    // Auto-trust the very first device used for this admin
     if (isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
@@ -70,6 +91,7 @@ export const adminLogin = async (req, res) => {
       );
     }
 
+    // Success Logic
     await LoginAudit.create({ ...auditBase, admin: admin._id, success: true, reason: "Login success" });
     admin.lastLoginAt = new Date();
     await admin.save();
@@ -81,6 +103,59 @@ export const adminLogin = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+
+/* ==========================================================
+   APPROVE PENDING DEVICE
+   ========================================================== */
+export const approveDevice = async (req, res) => {
+  try {
+    const { deviceId, adminPassword } = req.body;
+    
+    // 1. Find the admin (the one currently logged in and clicking the button)
+    const admin = await Admin.findById(req.admin.id);
+    if (!admin) return res.status(404).json({ message: "Admin not found" });
+
+    // 2. Verify password before allowing a new device fingerprint
+    const isMatch = await bcrypt.compare(adminPassword, admin.passwordHash);
+    if (!isMatch) return res.status(401).json({ success: false, message: "Security Check Failed: Incorrect Password" });
+
+    // 3. Find the specific device in the pending list
+    const pendingItem = admin.pendingDevices.id(deviceId);
+    if (!pendingItem) return res.status(404).json({ message: "Pending request not found" });
+
+    // 4. Move to Trusted and Remove from Pending
+    admin.trustedDevices.push({
+      fingerprint: pendingItem.fingerprint,
+      deviceInfo: pendingItem.deviceInfo,
+      ipAtTrust: pendingItem.ip,
+      addedAt: new Date()
+    });
+
+    // Remove using the pull method or specific ID
+    admin.pendingDevices.pull(deviceId);
+    
+    await admin.save();
+
+    return res.json({ success: true, message: "Device successfully whitelisted" });
+  } catch (err) {
+    console.error("Approval Error:", err);
+    return res.status(500).json({ message: "Server error during device approval" });
+  }
+};
+
+/* ==========================================================
+   GET PENDING DEVICES (For the Devices Page)
+   ========================================================== */
+export const getPendingDevices = async (req, res) => {
+    try {
+        const admin = await Admin.findById(req.admin.id);
+        return res.json({ success: true, pending: admin.pendingDevices });
+    } catch (err) {
+        return res.status(500).json({ message: "Error fetching devices" });
+    }
+};
+
 
 /* ==========================================================
    GET ALL USERS
