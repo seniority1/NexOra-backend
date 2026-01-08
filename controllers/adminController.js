@@ -22,12 +22,18 @@ function issueToken(admin) {
 }
 
 /* ==========================================================
-   ADMIN LOGIN (WITH DEVICE TRAP)
+   ADMIN LOGIN (WITH DEVICE TRAP & PROXY IP FIX)
    ========================================================== */
 export const adminLogin = async (req, res) => {
   try {
     const { email, password, deviceFingerprint } = req.body;
-    const ip = req.ip || req.connection.remoteAddress; // Dynamic IP detection
+    
+    // 🔥 FIX: Get real public IP even behind Render/Cloudflare/Heroku proxies
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || 
+               req.socket.remoteAddress || 
+               req.ip || 
+               "Unknown IP";
+               
     const ua = req.get("user-agent") || "Unknown Device";
 
     const auditBase = {
@@ -58,8 +64,7 @@ export const adminLogin = async (req, res) => {
     // 🔥 THE DEVICE TRAP: Password is correct, but device is unknown
     if (!isTrusted && !isVeryFirstLoginEver) {
       
-      // Update the admin document to include this attempt in a 'pendingApproval' array
-      // This is what your Device Page will fetch
+      // Update the admin document to include this attempt in a 'pendingDevices' array
       await Admin.updateOne(
         { _id: admin._id },
         { 
@@ -87,7 +92,16 @@ export const adminLogin = async (req, res) => {
     if (isVeryFirstLoginEver && fingerprint !== "not-provided") {
       await Admin.updateOne(
         { _id: admin._id },
-        { $push: { trustedDevices: { fingerprint, deviceInfo: ua.substring(0, 150), addedAt: new Date(), ipAtTrust: ip } } }
+        { 
+          $push: { 
+            trustedDevices: { 
+              fingerprint, 
+              deviceInfo: ua.substring(0, 150), 
+              addedAt: new Date(), 
+              ipAtTrust: ip 
+            } 
+          } 
+        }
       );
     }
 
