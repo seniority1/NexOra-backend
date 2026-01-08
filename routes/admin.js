@@ -10,10 +10,13 @@ import {
   banUser, 
   unbanUser, 
   getSecurityLogs,
-  clearSecurityLogs,  // 👈 ADDED: Logic to wipe the LoginAudit collection
+  clearSecurityLogs,
   getAllDeployments,
   deleteDeployment,   
-  deleteUserAccount   
+  deleteUserAccount,
+  // 🔥 NEW: Device Gatekeeper Logic
+  getPendingDevices,
+  approveDevice
 } from "../controllers/adminController.js";
 
 // 2. 🚀 Notification Logic
@@ -41,6 +44,12 @@ router.post("/unban", verifyAdmin, unbanUser);
 // 🗑️ Delete a user account from MongoDB via its ID
 router.delete("/users/:id", verifyAdmin, deleteUserAccount); 
 
+// --- 📱 Device Gatekeeper (Whitelisting) ---
+// 🔍 Fetch attempts from unknown browsers/IPs
+router.get("/devices/pending", verifyAdmin, getPendingDevices);
+// ✅ Whitelist a specific device (Requires Admin Password in body)
+router.post("/devices/approve/:deviceId", verifyAdmin, approveDevice);
+
 // --- 🤖 Bot Management (Active Engines) ---
 // 🚀 Fetches all active NexOra engines for the table
 router.get("/deployments", verifyAdmin, getAllDeployments); 
@@ -55,7 +64,7 @@ router.delete("/gift-logs/clear", verifyAdmin, clearGiftLogs);
 
 // --- 🛡️ Security Audit ---
 router.get("/security", verifyAdmin, getSecurityLogs);
-// 🔥 ADDED: This connects to your "Wipe Audit Logs" button in admin-security.html
+// 🔥 This connects to your "Wipe Audit Logs" button in admin-security.html
 router.delete("/security/clear", verifyAdmin, clearSecurityLogs); 
 
 // --- 🔔 Notification System ---
