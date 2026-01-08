@@ -294,6 +294,32 @@ export const clearGiftLogs = async (req, res) => {
 
 
 /* ==========================================================
+   WIPE SECURITY LOGS (Audit Cleanup)
+   ========================================================== */
+export const clearSecurityLogs = async (req, res) => {
+  try {
+    // 🔥 This targets your specific model
+    const result = await LoginAudit.deleteMany({}); 
+
+    console.log(`[SECURITY] Audit logs cleared by admin: ${req.admin?.email || 'Unknown'}`);
+
+    res.json({ 
+      success: true, 
+      message: `Security ledger cleared. ${result.deletedCount} entries removed.` 
+    });
+  } catch (err) {
+    console.error("Clear Logs Error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server failed to wipe audit logs." 
+    });
+  }
+};
+
+
+
+
+/* ==========================================================
    SECURITY LOGS & BROADCAST
    ========================================================== */
 export const getSecurityLogs = async (req, res) => {
