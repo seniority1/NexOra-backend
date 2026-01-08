@@ -6,10 +6,11 @@ import {
   getAllUsers, 
   addCoins, 
   getGiftedUsers, 
-  clearGiftLogs,      // 👈 ADDED: Logic to wipe the ledger
+  clearGiftLogs,      
   banUser, 
   unbanUser, 
   getSecurityLogs,
+  clearSecurityLogs,  // 👈 ADDED: Logic to wipe the LoginAudit collection
   getAllDeployments,
   deleteDeployment,   
   deleteUserAccount   
@@ -50,10 +51,12 @@ router.delete("/deployments/:id", verifyAdmin, deleteDeployment);
 // --- 💰 Economy ---
 router.post("/add-coins", verifyAdmin, addCoins);
 router.get("/gifted", verifyAdmin, getGiftedUsers);
-router.delete("/gift-logs/clear", verifyAdmin, clearGiftLogs); // 👈 ADDED: Connects to your "Clear All" button
+router.delete("/gift-logs/clear", verifyAdmin, clearGiftLogs); 
 
-// --- 🛡️ Security ---
+// --- 🛡️ Security Audit ---
 router.get("/security", verifyAdmin, getSecurityLogs);
+// 🔥 ADDED: This connects to your "Wipe Audit Logs" button in admin-security.html
+router.delete("/security/clear", verifyAdmin, clearSecurityLogs); 
 
 // --- 🔔 Notification System ---
 router.get("/notifications", verifyAdmin, getAllNotifications);
