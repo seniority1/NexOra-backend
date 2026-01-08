@@ -1,5 +1,10 @@
 import express from "express";
-import { saveMessage, getMessages, deleteMessage } from "../controllers/contactController.js";
+import { 
+  saveMessage, 
+  getMessages, 
+  deleteMessage, 
+  wipeAllMessages 
+} from "../controllers/contactController.js";
 
 const router = express.Router(); 
 
@@ -14,6 +19,12 @@ router.post("/", saveMessage);
  * @desc    Fetch all messages for the NexOra Admin Panel
  */
 router.get("/", getMessages);
+
+/**
+ * @route   DELETE /api/contact/wipe-all
+ * @desc    Bulk cleanup: Purge all message records from the engine
+ */
+router.delete("/wipe-all", wipeAllMessages);
 
 /**
  * @route   DELETE /api/contact/:id
