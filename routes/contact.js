@@ -1,12 +1,24 @@
 import express from "express";
-import { saveMessage, getMessages } from "../controllers/contactController.js";
+import { saveMessage, getMessages, deleteMessage } from "../controllers/contactController.js";
 
-const router = express.Router(); // <-- Make sure this is here!
+const router = express.Router(); 
 
-// POST /api/contact/  (to save a message)
+/**
+ * @route   POST /api/contact/
+ * @desc    Save a new contact message from the frontend form
+ */
 router.post("/", saveMessage);
 
-// GET /api/contact/  (to fetch all messages)
+/**
+ * @route   GET /api/contact/
+ * @desc    Fetch all messages for the NexOra Admin Panel
+ */
 router.get("/", getMessages);
+
+/**
+ * @route   DELETE /api/contact/:id
+ * @desc    Wipe a specific message record by its MongoDB ID
+ */
+router.delete("/:id", deleteMessage);
 
 export default router;
