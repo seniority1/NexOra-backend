@@ -87,8 +87,8 @@ export const adminLogin = async (req, res) => {
    ========================================================== */
 export const getAllUsers = async (req, res) => {
   try {
-    // 🔥 UPDATED: Added lastLoginAt to the projection string
-    const users = await User.find({}, "name email coins createdAt lastLoginAt")
+    // 🔥 UPDATED: Added isBanned and banReason to the projection
+    const users = await User.find({}, "name email coins createdAt lastLoginAt isBanned banReason")
       .sort({ createdAt: -1 });
 
     return res.json({ 
