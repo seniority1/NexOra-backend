@@ -159,6 +159,46 @@ export const deleteBot = async (req, res) => {
 };
 
 /**
+ * 8. RESET SESSION (Repair Connection)
+ * Only wipes the physical VPS files, keeping the DB slot active.
+ */
+export const resetSession = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    
+    // 1. Identify the user
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // 2. Tell VPS to wipe ONLY the auth/session folder for this number
+    // We use a separate route so the VPS knows NOT to stop the bot forever
+    await axios.post(`${FACTORY_URL}/reset-session`, { 
+      phoneNumber, 
+      secret: SECRET_KEY 
+    });
+
+    // 3. Update the Database record
+    // We don't delete! We just clear the old code and set status to resetting
+    await Deployment.findOneAndUpdate(
+      { user: user._id, phoneNumber },
+      { 
+        status: "resetting", 
+        pairingCode: "Wiping session..." 
+      }
+    );
+
+    res.json({ 
+      success: true, 
+      message: "Session files cleared. Please wait for a new pairing code." 
+    });
+  } catch (error) {
+    console.error("RESET ERROR:", error.message);
+    res.status(500).json({ success: false, message: "Failed to reset session." });
+  }
+};
+
+
+/**
  * 6. WEBHOOK: Update Pairing Code (From VPS)
  * 🚀 Emits Socket signal for Real-time Dashboard update
  */
