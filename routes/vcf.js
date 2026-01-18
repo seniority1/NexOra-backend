@@ -1,8 +1,12 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
 
-// Correct path to your controller (controllers/vcfController.js)
-const vcfController = require('../controllers/vcfController'); 
+// ✅ Correct ESM Import for the controller
+import * as vcfController from '../controllers/vcfController.js'; 
+
+// ✅ Importing Models (Note the .js extension, required in ESM)
+import Session from '../models/Session.js';
+import Participant from '../models/Participants.js';
 
 /**
  * 1. BOSS ROUTES (Command Center)
@@ -14,7 +18,6 @@ router.post('/create', vcfController.createSession);
 // Helper route to get all active sessions for the Dashboard Grid
 router.get('/active-sessions', async (req, res) => {
     try {
-        const Session = require('../models/Session');
         // Fetches sessions that are currently active
         const active = await Session.find({ status: 'active' });
         res.json(active);
@@ -26,7 +29,6 @@ router.get('/active-sessions', async (req, res) => {
 // Fetch participant list for the Boss "View List" modal
 router.get('/list/:sessionId', async (req, res) => {
     try {
-        const Participant = require('../models/Participants'); // Matches your plural filename
         const list = await Participant.find({ sessionId: req.params.sessionId }).sort({ joinedAt: -1 });
         res.json(list);
     } catch (err) {
@@ -46,4 +48,5 @@ router.post('/join', vcfController.joinSession);
 router.get('/download/:sessionId', vcfController.downloadVcf);
 
 
-module.exports = router;
+// ✅ Correct ESM Export
+export default router;
