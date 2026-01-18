@@ -1,13 +1,13 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const ParticipantSchema = new mongoose.Schema({
-    sessionId: { type: String, required: true, index: true }, // Links to the session
+    sessionId: { type: String, required: true, index: true },
     name: { type: String, required: true },
     phone: { type: String, required: true },
     joinedAt: { type: Date, default: Date.now }
 });
 
-// Optimization: Indexing sessionId makes fetching 1000+ contacts very fast
 ParticipantSchema.index({ sessionId: 1 });
 
-module.exports = mongoose.model('Participant', ParticipantSchema);
+// ✅ Change module.exports to export default
+export default mongoose.model('Participant', ParticipantSchema);
