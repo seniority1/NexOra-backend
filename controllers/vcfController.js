@@ -1,5 +1,5 @@
-const Session = require('../models/Session'); // Your session schema
-const Participant = require('../models/Participant'); // Your participant schema
+const Session = require('../models/Session'); 
+const Participant = require('../models/Participants'); // Fixed path to plural file
 const { v4: uuidv4 } = require('uuid');
 
 /**
@@ -24,10 +24,14 @@ exports.createSession = async (req, res) => {
 
         await newSession.save();
 
-        // Optional: Set a server-side timeout to broadcast "End"
+        // Trigger endSession automatically when duration expires
         const delay = duration * 60000;
         setTimeout(async () => {
-            await endSession(sessionId, req.app.get('socketio'));
+            // Accessing io from the app settings defined in server.js
+            const io = req.app.get('socketio');
+            if (io) {
+                await endSession(sessionId, io);
+            }
         }, delay);
 
         res.status(201).json({ success: true, sessionId, message: "Engine Initialized" });
@@ -49,7 +53,7 @@ exports.joinSession = async (req, res) => {
             return res.status(404).json({ success: false, message: "Session ended or not found" });
         }
 
-        // Add participant
+        // Add participant to the pool
         const participant = new Participant({
             sessionId,
             name,
@@ -58,14 +62,16 @@ exports.joinSession = async (req, res) => {
 
         await participant.save();
 
-        // Update real-time count for the Boss and other participants
+        // Update real-time count for the Boss and other participants in the room
         const io = req.app.get('socketio');
-        const count = await Participant.countDocuments({ sessionId });
-        io.to(sessionId).emit('gainerUpdate', { 
-            sessionId, 
-            count,
-            participant: { name, phone } 
-        });
+        if (io) {
+            const count = await Participant.countDocuments({ sessionId });
+            io.to(sessionId).emit('gainerUpdate', { 
+                sessionId, 
+                count,
+                participant: { name } // Only send name for privacy in broadcast
+            });
+        }
 
         res.status(200).json({ success: true, message: "Joined successfully!" });
     } catch (error) {
@@ -80,7 +86,7 @@ async function endSession(sessionId, io) {
     try {
         await Session.findOneAndUpdate({ sessionId }, { status: 'completed' });
         
-        // Notify everyone in the room that the VCF is ready
+        // Notify everyone in the specific session room that the VCF is ready
         io.to(sessionId).emit('sessionFinished', {
             sessionId,
             downloadUrl: `/api/vcf/download/${sessionId}`,
@@ -105,7 +111,7 @@ exports.downloadVcf = async (req, res) => {
             return res.status(404).send("No contacts found in this pool.");
         }
 
-        // Professional VCF Formatting
+        // Professional VCF 3.0 Formatting
         let vcfContent = "";
         participants.forEach(p => {
             vcfContent += `BEGIN:VCARD\n`;
@@ -115,10 +121,24 @@ exports.downloadVcf = async (req, res) => {
             vcfContent += `END:VCARD\n`;
         });
 
+        // Set headers to trigger automatic browser download
         res.setHeader('Content-Type', 'text/vcard');
         res.setHeader('Content-Disposition', `attachment; filename="NexOra_Pool_${sessionId}.vcf"`);
-        res.send(vcfContent);
+        res.status(200).send(vcfContent);
     } catch (error) {
         res.status(500).send("Error generating file");
+    }
+};
+
+/**
+ * 5. View Participant List (For Boss Dashboard Modal)
+ */
+exports.viewLiveList = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const participants = await Participant.find({ sessionId }).sort({ joinedAt: -1 });
+        res.status(200).json(participants);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };
