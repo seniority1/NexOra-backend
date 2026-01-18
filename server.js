@@ -1,14 +1,10 @@
-import express from "express";
+Import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
-import { exec } from "child_process"; // For Cleaner.sh
-import fs from "fs"; // For session checks
-import path from "path";
 
-// Routes
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
 import paymentRoutes from "./routes/payment.js";
@@ -17,9 +13,7 @@ import adminRoutes from "./routes/admin.js";
 import botDeployRoutes from "./routes/botDeployRoutes.js";
 import contactRoutes from "./routes/contact.js";
 import adminNotificationsRoutes from "./routes/adminNotifications.js";
-import vcfRoutes from "./routes/vcf.js"; // 📥 Integrated VCF Routes
 
-// Cron & Models
 import "./cron/dailyReport.js"; 
 import Admin from "./models/Admin.js";
 import User from "./models/User.js"; 
@@ -31,7 +25,6 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.io
 const io = new Server(server, {
   cors: {
     origin: "*", 
@@ -41,19 +34,18 @@ const io = new Server(server, {
 });
 
 global.io = io;
-app.set('socketio', io); // Ensures controllers can access io
 
 io.on("connection", (socket) => {
-  console.log(`📡 User connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id}`);
   socket.on("disconnect", () => {
-    console.log(`📡 User disconnected: ${socket.id}`);
+    console.log(`User disconnected: ${socket.id}`);
   });
 });
 
 app.use(express.json());
 app.use(cors());
 
-// --- ROUTES ---
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/payment", paymentRoutes);
@@ -62,28 +54,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/bot", botDeployRoutes); 
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin", adminNotificationsRoutes);
-app.use("/api/vcf", vcfRoutes); // 🚀 VCF Gainer Endpoint
-
-/**
- * 🛠️ NEXORA SELF-REPAIR (BAD MAC FIX)
- * Runs Cleaner.sh to flush logs and junk session files
- */
-const runSelfRepair = () => {
-  console.log("🛡️ NexOra Engine: Running Health Check & Repair...");
-  exec('sh ./scripts/cleaner.sh', (err, stdout, stderr) => {
-    if (err) {
-      console.error("❌ Repair Error:", err.message);
-    } else {
-      console.log("✅ NexOra Repair: Junk flushed. Logs cleared.");
-    }
-  });
-};
-
-// Auto-repair every 30 minutes to prevent 'Bad MAC' session hanging
-setInterval(runSelfRepair, 1800000);
 
 /**
  * 🕵️‍♂️ AUTOMATIC BACKGROUND WATCHER
+ * Updated to fix Mongoose Validation Errors
  */
 setInterval(async () => {
   try {
@@ -109,7 +83,7 @@ setInterval(async () => {
               title: "Bot Stopped",
               message: `🛑 Alert: Your bot "${bot.name}" has finished its deployment period.`,
               targetUser: user.email,
-              sentBy: "NexOra System",
+              sentBy: "NexOra System", // ✅ FIXED: Added required field
               readBy: []
             });
           }
@@ -126,7 +100,7 @@ setInterval(async () => {
             title: "Coins Expired",
             message: "⚠️ Alert: Your NexOra coins have reached 0. Refill to resume deployments.",
             targetUser: user.email,
-            sentBy: "NexOra System",
+            sentBy: "NexOra System", // ✅ FIXED: Added required field
             readBy: []
           });
         }
@@ -148,7 +122,7 @@ setInterval(async () => {
 mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
-    console.log("✅ MongoDB Connected");
+    console.log("MongoDB Connected");
 
     const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
     const existingAdmin = await Admin.findOne({ email: adminEmail });
@@ -174,23 +148,17 @@ mongoose
         { email: adminEmail },
         { $addToSet: { allowedIPs: "197.211.63.149" } }
       );
-      console.log("Admin IP 197.211.63.149 confirmed.");
+      console.log("Hard-coded IP 197.211.63.149 confirmed in whitelist");
     }
   })
   .catch((err) => {
-    console.error("❌ MongoDB Error:", err);
+    console.error("MongoDB Error:", err);
     process.exit(1);
   });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`
-  ==========================================
-    NEXORA BACKEND + SOCKET.IO LIVE: ${PORT}
-    REPAIR ENGINE: ACTIVE (30m Interval)
-    WATCHER ENGINE: MONITORING BOTS & COINS
-    ADMIN IP: 197.211.63.149
-  ==========================================
-  `);
-  runSelfRepair(); // Run first cleanup on startup
+  console.log(`NexOra Backend + Socket.io LIVE on port ${PORT}`);
+  console.log(`Watcher Engine ACTIVE — Monitoring Bots & Coins...`);
+  console.log(`Admin IP locked to: 197.211.63.149`);
 });
