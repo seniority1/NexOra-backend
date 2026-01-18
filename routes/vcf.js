@@ -1,23 +1,26 @@
-import express from 'express';
+const express = require('express');
 const router = express.Router();
+// Correct path to your controller
+const vcfController = require('../controllers/vcfController'); 
 
-// Import the controller using ESM syntax
-// (Ensure your controller is also updated or uses a compatible export)
-import * as vcfController from '../controllers/vcfController.js';
+// Boss Routes
+router.post('/create', vcfController.createSession);
+router.get('/active-sessions', async (req, res) => {
+    // Helper to get active sessions for the Dashboard Grid
+    const Session = require('../models/Session');
+    const active = await Session.find({ status: 'active' });
+    res.json(active);
+});
 
-// 1. POOL MANAGEMENT (For the Creator's Page)
-// Initializes a new slot
-router.post('/create', vcfController.createPool);
+// Participant Routes
+router.post('/join', vcfController.joinSession);
+router.get('/list/:sessionId', async (req, res) => {
+    const Participant = require('../models/Participants'); // Matches your filename
+    const list = await Participant.find({ sessionId: req.params.sessionId });
+    res.json(list);
+});
 
-// Fetches the live list of names/numbers for the dashboard
-router.get('/list/:sessionId', vcfController.getParticipantList);
+// Download Route
+router.get('/download/:sessionId', vcfController.downloadVcf);
 
-// 2. PARTICIPANT ACTIONS (For the Join Page)
-// The instant check to see if a number is already in the specific pool
-router.post('/check-duplicate', vcfController.checkDuplicate);
-
-// The final submission to join the pool
-router.post('/join', vcfController.joinPool);
-
-// 3. EXPORT
-export default router;
+module.exports = router;
