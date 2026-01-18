@@ -1,121 +1,124 @@
-const fs = require('fs');
-const path = require('path');
+const Session = require('../models/Session'); // Your session schema
+const Participant = require('../models/Participant'); // Your participant schema
 const { v4: uuidv4 } = require('uuid');
 
-// In-memory store for active sessions
-let activeSessions = {}; 
-
 /**
- * @desc Initialize a new Gainer Pool
+ * 1. Initialize a New VCF Session (The Boss/Creator)
  */
-exports.createPool = async (req, res) => {
+exports.createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
+        const sessionId = uuidv4().substring(0, 8); // Unique ID for the link
+        
+        // Calculate expiry time based on duration (minutes)
+        const expiresAt = new Date(Date.now() + duration * 60000);
 
-        const currentActiveCount = Object.keys(activeSessions).length;
-        if (currentActiveCount >= 5) {
-            return res.status(400).json({ success: false, message: "Engine Limit Reached: 5 Slots Max" });
+        const newSession = new Session({
+            sessionId,
+            name,
+            duration,
+            expiresAt,
+            status: 'active',
+            creator: req.user ? req.user.id : 'admin' // Link to the "Boss"
+        });
+
+        await newSession.save();
+
+        // Optional: Set a server-side timeout to broadcast "End"
+        const delay = duration * 60000;
+        setTimeout(async () => {
+            await endSession(sessionId, req.app.get('socketio'));
+        }, delay);
+
+        res.status(201).json({ success: true, sessionId, message: "Engine Initialized" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * 2. Join a VCF Session (The Participants)
+ */
+exports.joinSession = async (req, res) => {
+    try {
+        const { sessionId, name, phone } = req.body;
+
+        // Check if session exists and is still active
+        const session = await Session.findOne({ sessionId, status: 'active' });
+        if (!session) {
+            return res.status(404).json({ success: false, message: "Session ended or not found" });
         }
 
-        const sessionId = uuidv4().substring(0, 8);
-        
-        activeSessions[sessionId] = {
-            id: sessionId,
-            name: name,
-            startTime: Date.now(),
-            duration: parseInt(duration) * 60 * 1000,
-            participants: [],
-            status: 'active',
-            vcfData: null // Will hold the final string
-        };
-
-        // Auto-Termination
-        setTimeout(() => {
-            terminatePool(sessionId, req.app.get('socketio'));
-        }, activeSessions[sessionId].duration);
-
-        res.status(200).json({ success: true, sessionId });
-    } catch (error) {
-        res.status(500).json({ success: false, message: "Engine Initialization Error" });
-    }
-};
-
-/**
- * @desc Check for duplicate phone numbers
- */
-exports.checkDuplicate = (req, res) => {
-    const { phone, sessionId } = req.body;
-    const session = activeSessions[sessionId];
-    if (!session) return res.status(404).json({ exists: false });
-
-    const exists = session.participants.some(p => p.phone === phone);
-    res.json({ exists });
-};
-
-/**
- * @desc Add user to pool
- */
-exports.joinPool = (req, res) => {
-    const { name, phone, sessionId } = req.body;
-    const session = activeSessions[sessionId];
-
-    if (!session || session.status !== 'active') {
-        return res.status(404).json({ message: "Pool expired or invalid" });
-    }
-
-    const isDuplicate = session.participants.some(p => p.phone === phone);
-    if (isDuplicate) return res.status(400).json({ message: "Already in pool" });
-
-    session.participants.push({ name, phone, joinedAt: new Date() });
-
-    // Live update to Creator Dashboard
-    const io = req.app.get('socketio');
-    if (io) {
-        io.emit('gainerUpdate', {
-            sessionId: sessionId,
-            count: session.participants.length
+        // Add participant
+        const participant = new Participant({
+            sessionId,
+            name,
+            phone
         });
-    }
 
-    res.status(200).json({ success: true });
+        await participant.save();
+
+        // Update real-time count for the Boss and other participants
+        const io = req.app.get('socketio');
+        const count = await Participant.countDocuments({ sessionId });
+        io.to(sessionId).emit('gainerUpdate', { 
+            sessionId, 
+            count,
+            participant: { name, phone } 
+        });
+
+        res.status(200).json({ success: true, message: "Joined successfully!" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 };
 
 /**
- * @desc Get Live Participant List
+ * 3. End Session & Trigger Notifications
  */
-exports.getParticipantList = (req, res) => {
-    const { sessionId } = req.params;
-    const session = activeSessions[sessionId];
-    if (!session) return res.json([]);
-    res.json(session.participants);
-};
-
-/**
- * @desc Internal Function: Generate VCF String and Terminate
- */
-function terminatePool(sessionId, io) {
-    const session = activeSessions[sessionId];
-    if (!session) return;
-
-    console.log(`[NexOra Engine] Compiling VCF for: ${session.name}`);
-
-    // Build VCF Content
-    let vcfContent = "";
-    session.participants.forEach((user, index) => {
-        vcfContent += `BEGIN:VCARD\nVERSION:3.0\nFN:NexOra ${index + 1} ${user.name}\nTEL;TYPE=CELL:${user.phone}\nEND:VCARD\n`;
-    });
-
-    session.vcfData = vcfContent;
-    session.status = 'completed';
-
-    // Notify the Creator page that the session is done
-    if (io) {
-        io.emit('sessionTerminated', { sessionId, name: session.name });
+async function endSession(sessionId, io) {
+    try {
+        await Session.findOneAndUpdate({ sessionId }, { status: 'completed' });
+        
+        // Notify everyone in the room that the VCF is ready
+        io.to(sessionId).emit('sessionFinished', {
+            sessionId,
+            downloadUrl: `/api/vcf/download/${sessionId}`,
+            message: "VCF is ready! You can now download the contacts."
+        });
+        
+        console.log(`[NexOra Engine] Session ${sessionId} finalized.`);
+    } catch (err) {
+        console.error("Error ending session:", err);
     }
-
-    // Keep completed session in memory for 1 hour so the creator can download it
-    setTimeout(() => {
-        delete activeSessions[sessionId];
-        console.log(`[NexOra Engine] Slot ${sessionId} cleared.`);
-    }, 60 * 60 * 1000); 
 }
+
+/**
+ * 4. Generate & Download VCF File
+ */
+exports.downloadVcf = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const participants = await Participant.find({ sessionId });
+
+        if (participants.length === 0) {
+            return res.status(404).send("No contacts found in this pool.");
+        }
+
+        // Professional VCF Formatting
+        let vcfContent = "";
+        participants.forEach(p => {
+            vcfContent += `BEGIN:VCARD\n`;
+            vcfContent += `VERSION:3.0\n`;
+            vcfContent += `FN:NexOra ${p.name}\n`;
+            vcfContent += `TEL;TYPE=CELL:${p.phone}\n`;
+            vcfContent += `END:VCARD\n`;
+        });
+
+        res.setHeader('Content-Type', 'text/vcard');
+        res.setHeader('Content-Disposition', `attachment; filename="NexOra_Pool_${sessionId}.vcf"`);
+        res.send(vcfContent);
+    } catch (error) {
+        res.status(500).send("Error generating file");
+    }
+};
