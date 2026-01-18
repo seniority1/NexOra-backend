@@ -1,11 +1,11 @@
-const Session = require('../models/Session'); 
-const Participant = require('../models/Participants'); // Fixed path to plural file
-const { v4: uuidv4 } = require('uuid');
+import Session from '../models/Session.js';
+import Participant from '../models/Participants.js';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * 1. Initialize a New VCF Session (The Boss/Creator)
  */
-exports.createSession = async (req, res) => {
+export const createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
         const sessionId = uuidv4().substring(0, 8); // Unique ID for the link
@@ -43,7 +43,7 @@ exports.createSession = async (req, res) => {
 /**
  * 2. Join a VCF Session (The Participants)
  */
-exports.joinSession = async (req, res) => {
+export const joinSession = async (req, res) => {
     try {
         const { sessionId, name, phone } = req.body;
 
@@ -80,7 +80,7 @@ exports.joinSession = async (req, res) => {
 };
 
 /**
- * 3. End Session & Trigger Notifications
+ * 3. End Session & Trigger Notifications (Helper Function)
  */
 async function endSession(sessionId, io) {
     try {
@@ -102,7 +102,7 @@ async function endSession(sessionId, io) {
 /**
  * 4. Generate & Download VCF File
  */
-exports.downloadVcf = async (req, res) => {
+export const downloadVcf = async (req, res) => {
     try {
         const { sessionId } = req.params;
         const participants = await Participant.find({ sessionId });
@@ -133,7 +133,7 @@ exports.downloadVcf = async (req, res) => {
 /**
  * 5. View Participant List (For Boss Dashboard Modal)
  */
-exports.viewLiveList = async (req, res) => {
+export const viewLiveList = async (req, res) => {
     try {
         const { sessionId } = req.params;
         const participants = await Participant.find({ sessionId }).sort({ joinedAt: -1 });
