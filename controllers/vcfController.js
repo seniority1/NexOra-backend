@@ -142,3 +142,28 @@ export const viewLiveList = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+/**
+ * 6. Get Single Session Details (For Join Page)
+ */
+export const getSessionDetails = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await Session.findOne({ sessionId });
+
+        if (!session) {
+            return res.status(404).json({ success: false, message: "Session not found" });
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            data: {
+                title: session.name,
+                expiresAt: session.expiresAt,
+                status: session.status
+            } 
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
