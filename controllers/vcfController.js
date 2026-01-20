@@ -8,9 +8,8 @@ import { v4 as uuidv4 } from 'uuid';
 export const createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
-        const sessionId = uuidv4().substring(0, 8); // Unique ID for the link
+        const sessionId = uuidv4().substring(0, 8); 
         
-        // Calculate expiry time based on duration (minutes)
         const expiresAt = new Date(Date.now() + duration * 60000);
 
         const newSession = new Session({
@@ -19,15 +18,13 @@ export const createSession = async (req, res) => {
             duration,
             expiresAt,
             status: 'active',
-            creator: req.user ? req.user.id : 'admin' // Link to the "Boss"
+            creator: req.user ? req.user.id : 'admin' 
         });
 
         await newSession.save();
 
-        // Trigger endSession automatically when duration expires
         const delay = duration * 60000;
         setTimeout(async () => {
-            // Accessing io from the app settings defined in server.js
             const io = req.app.get('socketio');
             if (io) {
                 await endSession(sessionId, io);
@@ -47,13 +44,17 @@ export const joinSession = async (req, res) => {
     try {
         const { sessionId, name, phone } = req.body;
 
-        // Check if session exists and is still active
         const session = await Session.findOne({ sessionId, status: 'active' });
         if (!session) {
             return res.status(404).json({ success: false, message: "Session ended or not found" });
         }
 
-        // Add participant to the pool
+        // Prevent duplicate entries in the same session
+        const existing = await Participant.findOne({ sessionId, phone });
+        if (existing) {
+            return res.status(400).json({ success: false, message: "You are already in this pool!" });
+        }
+
         const participant = new Participant({
             sessionId,
             name,
@@ -62,14 +63,13 @@ export const joinSession = async (req, res) => {
 
         await participant.save();
 
-        // Update real-time count for the Boss and other participants in the room
         const io = req.app.get('socketio');
         if (io) {
             const count = await Participant.countDocuments({ sessionId });
             io.to(sessionId).emit('gainerUpdate', { 
                 sessionId, 
                 count,
-                participant: { name } // Only send name for privacy in broadcast
+                participant: { name } 
             });
         }
 
@@ -80,17 +80,16 @@ export const joinSession = async (req, res) => {
 };
 
 /**
- * 3. End Session & Trigger Notifications (Helper Function)
+ * 3. End Session Helper
  */
 async function endSession(sessionId, io) {
     try {
         await Session.findOneAndUpdate({ sessionId }, { status: 'completed' });
         
-        // Notify everyone in the specific session room that the VCF is ready
         io.to(sessionId).emit('sessionFinished', {
             sessionId,
-            downloadUrl: `/api/vcf/download/${sessionId}`,
-            message: "VCF is ready! You can now download the contacts."
+            // Notice we don't send the full URL here for security
+            message: "VCF is ready! Verify your number to download."
         });
         
         console.log(`[NexOra Engine] Session ${sessionId} finalized.`);
@@ -100,28 +99,37 @@ async function endSession(sessionId, io) {
 }
 
 /**
- * 4. Generate & Download VCF File
+ * 4. SECURE Generate & Download VCF File
+ * Now requires ?phone=... in the query to verify participation
  */
 export const downloadVcf = async (req, res) => {
     try {
         const { sessionId } = req.params;
+        const { phone } = req.query; // Secure: Get phone from query params
+
+        if (!phone) {
+            return res.status(403).send("Verification required: Phone number missing.");
+        }
+
+        // Check if the user requesting the file actually joined this specific pool
+        const isParticipant = await Participant.findOne({ sessionId, phone });
+
+        if (!isParticipant) {
+            return res.status(403).send("Access Denied: This number is not registered in this pool.");
+        }
+
         const participants = await Participant.find({ sessionId });
 
         if (participants.length === 0) {
-            return res.status(404).send("No contacts found in this pool.");
+            return res.status(404).send("No contacts found.");
         }
 
         // Professional VCF 3.0 Formatting
         let vcfContent = "";
         participants.forEach(p => {
-            vcfContent += `BEGIN:VCARD\n`;
-            vcfContent += `VERSION:3.0\n`;
-            vcfContent += `FN:NexOra ${p.name}\n`;
-            vcfContent += `TEL;TYPE=CELL:${p.phone}\n`;
-            vcfContent += `END:VCARD\n`;
+            vcfContent += `BEGIN:VCARD\nVERSION:3.0\nFN:NexOra ${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
         });
 
-        // Set headers to trigger automatic browser download
         res.setHeader('Content-Type', 'text/vcard');
         res.setHeader('Content-Disposition', `attachment; filename="NexOra_Pool_${sessionId}.vcf"`);
         res.status(200).send(vcfContent);
@@ -131,11 +139,20 @@ export const downloadVcf = async (req, res) => {
 };
 
 /**
- * 5. View Participant List (For Boss Dashboard Modal)
+ * 5. View Participant List (Boss Only)
  */
 export const viewLiveList = async (req, res) => {
     try {
         const { sessionId } = req.params;
+        
+        // Find the session to verify the creator
+        const session = await Session.findOne({ sessionId });
+        
+        // Boss Check: Only the creator (or admin) can see the full list
+        if (!session || (req.user && session.creator !== req.user.id)) {
+            return res.status(403).json({ success: false, message: "Unauthorized: Only the Boss can view this list." });
+        }
+
         const participants = await Participant.find({ sessionId }).sort({ joinedAt: -1 });
         res.status(200).json(participants);
     } catch (error) {
@@ -144,7 +161,7 @@ export const viewLiveList = async (req, res) => {
 };
 
 /**
- * 6. Get Single Session Details (For Join Page)
+ * 6. Get Single Session Details
  */
 export const getSessionDetails = async (req, res) => {
     try {
@@ -160,7 +177,9 @@ export const getSessionDetails = async (req, res) => {
             data: {
                 title: session.name,
                 expiresAt: session.expiresAt,
-                status: session.status
+                status: session.status,
+                // Include participant count for the UI
+                participantCount: await Participant.countDocuments({ sessionId })
             } 
         });
     } catch (error) {
