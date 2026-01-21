@@ -39,25 +39,34 @@ export const createSession = async (req, res) => {
 
 /**
  * 2. Join a VCF Session (The Participants)
+ * Updated with Anti-Spam Duplicate Check
  */
 export const joinSession = async (req, res) => {
     try {
-        const { sessionId, name, phone } = req.body;
+        const { sessionId, name } = req.body;
+        let { phone } = req.body;
 
+        // Standardize phone format (remove spaces/dashes) to ensure match accuracy
+        phone = phone.trim().replace(/[\s\-]/g, '');
+
+        // Check if session exists and is still active
         const session = await Session.findOne({ sessionId, status: 'active' });
         if (!session) {
             return res.status(404).json({ success: false, message: "Session ended or not found" });
         }
 
-        // Prevent duplicate entries in the same session
+        // 🛡️ ANTI-SPAM: Prevent duplicate entries in the same session
         const existing = await Participant.findOne({ sessionId, phone });
         if (existing) {
-            return res.status(400).json({ success: false, message: "You are already in this pool!" });
+            return res.status(400).json({ 
+                success: false, 
+                message: "You have already secured your entry in this pool!" 
+            });
         }
 
         const participant = new Participant({
             sessionId,
-            name,
+            name: name.trim(),
             phone
         });
 
@@ -88,7 +97,6 @@ async function endSession(sessionId, io) {
         
         io.to(sessionId).emit('sessionFinished', {
             sessionId,
-            // Notice we don't send the full URL here for security
             message: "VCF is ready! Verify your number to download."
         });
         
@@ -100,19 +108,22 @@ async function endSession(sessionId, io) {
 
 /**
  * 4. SECURE Generate & Download VCF File
- * Now requires ?phone=... in the query to verify participation
+ * Enforces participation check via phone verification
  */
 export const downloadVcf = async (req, res) => {
     try {
         const { sessionId } = req.params;
-        const { phone } = req.query; // Secure: Get phone from query params
+        const { phone } = req.query; 
 
         if (!phone) {
             return res.status(403).send("Verification required: Phone number missing.");
         }
 
-        // Check if the user requesting the file actually joined this specific pool
-        const isParticipant = await Participant.findOne({ sessionId, phone });
+        // Standardize input for comparison
+        const cleanPhone = phone.trim().replace(/[\s\-]/g, '');
+
+        // Double Check: Did this number actually join?
+        const isParticipant = await Participant.findOne({ sessionId, phone: cleanPhone });
 
         if (!isParticipant) {
             return res.status(403).send("Access Denied: This number is not registered in this pool.");
@@ -145,12 +156,11 @@ export const viewLiveList = async (req, res) => {
     try {
         const { sessionId } = req.params;
         
-        // Find the session to verify the creator
         const session = await Session.findOne({ sessionId });
         
-        // Boss Check: Only the creator (or admin) can see the full list
+        // Security: Ensure only the creator sees the full data
         if (!session || (req.user && session.creator !== req.user.id)) {
-            return res.status(403).json({ success: false, message: "Unauthorized: Only the Boss can view this list." });
+            return res.status(403).json({ success: false, message: "Unauthorized: Access restricted to the Pool Boss." });
         }
 
         const participants = await Participant.find({ sessionId }).sort({ joinedAt: -1 });
@@ -172,14 +182,15 @@ export const getSessionDetails = async (req, res) => {
             return res.status(404).json({ success: false, message: "Session not found" });
         }
 
+        const participantCount = await Participant.countDocuments({ sessionId });
+
         res.status(200).json({ 
             success: true, 
             data: {
                 title: session.name,
                 expiresAt: session.expiresAt,
                 status: session.status,
-                // Include participant count for the UI
-                participantCount: await Participant.countDocuments({ sessionId })
+                participantCount
             } 
         });
     } catch (error) {
