@@ -140,7 +140,7 @@ async function endSession(sessionId, io) {
         const notificationPayload = JSON.stringify({
             title: "NexOra: VCF Ready! 🔥",
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
-            icon: "https://nexora.org.ng/assets/logo.png", 
+            icon: "https://nexora.org.ng/asset/logo.jpg", 
             data: { 
                 // ✅ Updated to your real domain
                 url: `https://nexora.org.ng/join.html?id=${sessionId}` 
@@ -181,7 +181,7 @@ export const downloadVcf = async (req, res) => {
         const contacts = await Participant.find({ sessionId });
         let vcf = "";
         contacts.forEach(p => {
-            vcf += `BEGIN:VCARD\nVERSION:3.0\nFN:NexOra ${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
+            vcf += `BEGIN:VCARD\nVERSION:3.0\nFN: ${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
         });
 
         res.setHeader('Content-Type', 'text/vcard');
