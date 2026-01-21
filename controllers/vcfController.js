@@ -39,23 +39,19 @@ export const createSession = async (req, res) => {
 
 /**
  * 2. Join a VCF Session (The Participants)
- * Updated with Anti-Spam Duplicate Check
  */
 export const joinSession = async (req, res) => {
     try {
         const { sessionId, name } = req.body;
         let { phone } = req.body;
 
-        // Standardize phone format (remove spaces/dashes) to ensure match accuracy
         phone = phone.trim().replace(/[\s\-]/g, '');
 
-        // Check if session exists and is still active
         const session = await Session.findOne({ sessionId, status: 'active' });
         if (!session) {
             return res.status(404).json({ success: false, message: "Session ended or not found" });
         }
 
-        // 🛡️ ANTI-SPAM: Prevent duplicate entries in the same session
         const existing = await Participant.findOne({ sessionId, phone });
         if (existing) {
             return res.status(400).json({ 
@@ -90,17 +86,22 @@ export const joinSession = async (req, res) => {
 
 /**
  * 3. End Session Helper
+ * Updated: Records completedAt for the 48-hour countdown
  */
 async function endSession(sessionId, io) {
     try {
-        await Session.findOneAndUpdate({ sessionId }, { status: 'completed' });
+        // Record the exact time the pool finished
+        await Session.findOneAndUpdate(
+            { sessionId }, 
+            { status: 'completed', completedAt: new Date() }
+        );
         
         io.to(sessionId).emit('sessionFinished', {
             sessionId,
             message: "VCF is ready! Verify your number to download."
         });
         
-        console.log(`[NexOra Engine] Session ${sessionId} finalized.`);
+        console.log(`[NexOra Engine] Session ${sessionId} finalized. 48h download window started.`);
     } catch (err) {
         console.error("Error ending session:", err);
     }
@@ -108,7 +109,7 @@ async function endSession(sessionId, io) {
 
 /**
  * 4. SECURE Generate & Download VCF File
- * Enforces participation check via phone verification
+ * Updated: Enforces 48-hour expiration window
  */
 export const downloadVcf = async (req, res) => {
     try {
@@ -119,10 +120,20 @@ export const downloadVcf = async (req, res) => {
             return res.status(403).send("Verification required: Phone number missing.");
         }
 
-        // Standardize input for comparison
-        const cleanPhone = phone.trim().replace(/[\s\-]/g, '');
+        const session = await Session.findOne({ sessionId });
+        if (!session) return res.status(404).send("Session not found.");
 
-        // Double Check: Did this number actually join?
+        // 🛡️ 48-HOUR CHECK
+        if (session.completedAt) {
+            const now = new Date();
+            const hoursSinceCompletion = (now - new Date(session.completedAt)) / (1000 * 60 * 60);
+            
+            if (hoursSinceCompletion > 48) {
+                return res.status(410).send("Link Expired: This VCF is no longer available (48h limit exceeded).");
+            }
+        }
+
+        const cleanPhone = phone.trim().replace(/[\s\-]/g, '');
         const isParticipant = await Participant.findOne({ sessionId, phone: cleanPhone });
 
         if (!isParticipant) {
@@ -130,12 +141,8 @@ export const downloadVcf = async (req, res) => {
         }
 
         const participants = await Participant.find({ sessionId });
+        if (participants.length === 0) return res.status(404).send("No contacts found.");
 
-        if (participants.length === 0) {
-            return res.status(404).send("No contacts found.");
-        }
-
-        // Professional VCF 3.0 Formatting
         let vcfContent = "";
         participants.forEach(p => {
             vcfContent += `BEGIN:VCARD\nVERSION:3.0\nFN:NexOra ${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
@@ -155,12 +162,10 @@ export const downloadVcf = async (req, res) => {
 export const viewLiveList = async (req, res) => {
     try {
         const { sessionId } = req.params;
-        
         const session = await Session.findOne({ sessionId });
         
-        // Security: Ensure only the creator sees the full data
         if (!session || (req.user && session.creator !== req.user.id)) {
-            return res.status(403).json({ success: false, message: "Unauthorized: Access restricted to the Pool Boss." });
+            return res.status(403).json({ success: false, message: "Unauthorized." });
         }
 
         const participants = await Participant.find({ sessionId }).sort({ joinedAt: -1 });
@@ -172,6 +177,7 @@ export const viewLiveList = async (req, res) => {
 
 /**
  * 6. Get Single Session Details
+ * Updated: Checks for 48-hour expiry to update frontend UI
  */
 export const getSessionDetails = async (req, res) => {
     try {
@@ -182,6 +188,17 @@ export const getSessionDetails = async (req, res) => {
             return res.status(404).json({ success: false, message: "Session not found" });
         }
 
+        let currentStatus = session.status;
+
+        // Check for expiration
+        if (session.completedAt) {
+            const now = new Date();
+            const diff = (now - new Date(session.completedAt)) / (1000 * 60 * 60);
+            if (diff > 48) {
+                currentStatus = 'expired';
+            }
+        }
+
         const participantCount = await Participant.countDocuments({ sessionId });
 
         res.status(200).json({ 
@@ -189,7 +206,7 @@ export const getSessionDetails = async (req, res) => {
             data: {
                 title: session.name,
                 expiresAt: session.expiresAt,
-                status: session.status,
+                status: currentStatus, // Sends 'expired' if past 48h
                 participantCount
             } 
         });
