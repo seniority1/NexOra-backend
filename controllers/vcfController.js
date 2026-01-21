@@ -7,8 +7,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // 🔧 Configure Web-Push with your VAPID keys
+const vapidEmail = process.env.VAPID_EMAIL || 'alphonsusokoko40@gmail.com';
 webpush.setVapidDetails(
-    process.env.VAPID_EMAIL || 'mailto:alphonsusokoko40@gmail.com',
+    vapidEmail.startsWith('mailto:') ? vapidEmail : `mailto:${vapidEmail}`,
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
 );
@@ -46,7 +47,7 @@ export const createSession = async (req, res) => {
 };
 
 /**
- * 2. Join a VCF Session
+ * 2. Join a VCF Session (Syncs with Session Model Array)
  */
 export const joinSession = async (req, res) => {
     try {
@@ -56,16 +57,25 @@ export const joinSession = async (req, res) => {
         const session = await Session.findOne({ sessionId, status: 'active' });
         if (!session) return res.status(404).json({ success: false, message: "Pool closed." });
 
+        // Check separate collection for duplicates
         const existing = await Participant.findOne({ sessionId, phone: cleanPhone });
         if (existing) return res.status(400).json({ success: false, message: "Already in pool!" });
 
+        // Save to Participant Collection
         const participant = new Participant({
             sessionId,
             name: name.trim(),
             phone: cleanPhone
         });
-
         await participant.save();
+
+        // 🔥 CRITICAL: Add to Session's internal participants array for Notifications
+        session.participants.push({
+            name: name.trim(),
+            phone: cleanPhone,
+            joinedAt: new Date()
+        });
+        await session.save();
 
         const io = req.app.get('socketio');
         if (io) {
@@ -80,20 +90,27 @@ export const joinSession = async (req, res) => {
 };
 
 /**
- * 3. Save Push Subscription (NEW)
+ * 3. Save Push Subscription (Updated to sync with Session)
  */
 export const subscribeToNotifications = async (req, res) => {
     try {
         const { sessionId, phone, subscription } = req.body;
         
-        // Find the participant and save their device subscription
-        const participant = await Participant.findOneAndUpdate(
+        // Update the separate Participant record
+        await Participant.findOneAndUpdate(
             { sessionId, phone },
-            { pushSubscription: subscription },
-            { new: true }
+            { pushSubscription: subscription }
         );
 
-        if (!participant) return res.status(404).json({ message: "Participant not found" });
+        // 🔥 Update the nested participant inside the Session record
+        const session = await Session.findOne({ sessionId });
+        if (session) {
+            const pIndex = session.participants.findIndex(p => p.phone === phone);
+            if (pIndex !== -1) {
+                session.participants[pIndex].pushSubscription = subscription;
+                await session.save();
+            }
+        }
 
         res.status(200).json({ success: true, message: "Notifications enabled" });
     } catch (error) {
@@ -102,7 +119,7 @@ export const subscribeToNotifications = async (req, res) => {
 };
 
 /**
- * 4. End Session & Send Notifications (UPDATED)
+ * 4. End Session & Send Notifications
  */
 async function endSession(sessionId, io) {
     try {
@@ -112,35 +129,35 @@ async function endSession(sessionId, io) {
             { new: true }
         );
         
+        if (!session) return;
+
         // 🚀 Socket Alert
         io.to(sessionId).emit('sessionFinished', { sessionId });
 
-        // 🔔 WEB PUSH ALERT (To all participants with subscriptions)
-        const participants = await Participant.find({ 
-            sessionId, 
-            pushSubscription: { $exists: true, $ne: null } 
-        });
+        // 🔔 WEB PUSH ALERT
+        // We look directly in the session.participants array we just populated
+        const notifiedParticipants = session.participants.filter(p => p.pushSubscription && p.pushSubscription.endpoint);
 
         const notificationPayload = JSON.stringify({
             title: "NexOra: VCF Ready! 🔥",
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
-            icon: "/assets/logo.png", // Ensure this path is correct
-            data: { url: `/join.html?id=${sessionId}` }
+            icon: "https://nexora-backend-qhhc.onrender.com/assets/logo.png", 
+            data: { url: `https://nexora-vcf.vercel.app/join.html?id=${sessionId}` }
         });
 
-        participants.forEach(p => {
+        notifiedParticipants.forEach(p => {
             webpush.sendNotification(p.pushSubscription, notificationPayload)
-                .catch(err => console.error("Push Error for user:", p.phone, err));
+                .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
         });
 
-        console.log(`[NexOra] Session ${sessionId} finalized. Notified ${participants.length} users.`);
+        console.log(`[NexOra Engine] Session ${sessionId} finalized. Sent ${notifiedParticipants.length} notifications.`);
     } catch (err) {
         console.error("Error ending session:", err);
     }
 }
 
 /**
- * 5. Download VCF (Unchanged Logic)
+ * 5. Download VCF
  */
 export const downloadVcf = async (req, res) => {
     try {
@@ -166,7 +183,7 @@ export const downloadVcf = async (req, res) => {
         });
 
         res.setHeader('Content-Type', 'text/vcard');
-        res.setHeader('Content-Disposition', `attachment; filename="NexOra_${sessionId}.vcard"`);
+        res.setHeader('Content-Disposition', `attachment; filename="NexOra_${sessionId}.vcf"`);
         res.status(200).send(vcf);
     } catch (error) {
         res.status(500).send("Error generating file");
@@ -174,7 +191,7 @@ export const downloadVcf = async (req, res) => {
 };
 
 /**
- * 6. View List & Get Details (Unchanged)
+ * 6. View List & Get Details
  */
 export const viewLiveList = async (req, res) => {
     try {
@@ -196,7 +213,7 @@ export const getSessionDetails = async (req, res) => {
         }
 
         const count = await Participant.countDocuments({ sessionId: req.params.sessionId });
-        res.status(200).json({ success: true, data: { title: session.name, status, participantCount: count, expiresAt: session.expiresAt } });
+        res.status(200).json({ success: true, data: { title: session.name, status, participantCount: count, expiresAt: session.expiresAt, completedAt: session.completedAt } });
     } catch (error) {
         res.status(500).json({ success: false });
     }
