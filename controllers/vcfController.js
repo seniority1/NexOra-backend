@@ -69,7 +69,7 @@ export const joinSession = async (req, res) => {
         });
         await participant.save();
 
-        // 🔥 CRITICAL: Add to Session's internal participants array for Notifications
+        // 🔥 Add to Session internal participants array for Notifications
         session.participants.push({
             name: name.trim(),
             phone: cleanPhone,
@@ -102,7 +102,7 @@ export const subscribeToNotifications = async (req, res) => {
             { pushSubscription: subscription }
         );
 
-        // 🔥 Update the nested participant inside the Session record
+        // Update the nested participant inside the Session record
         const session = await Session.findOne({ sessionId });
         if (session) {
             const pIndex = session.participants.findIndex(p => p.phone === phone);
@@ -119,7 +119,7 @@ export const subscribeToNotifications = async (req, res) => {
 };
 
 /**
- * 4. End Session & Send Notifications
+ * 4. End Session & Send Notifications (Updated for nexora.org.ng)
  */
 async function endSession(sessionId, io) {
     try {
@@ -135,14 +135,16 @@ async function endSession(sessionId, io) {
         io.to(sessionId).emit('sessionFinished', { sessionId });
 
         // 🔔 WEB PUSH ALERT
-        // We look directly in the session.participants array we just populated
         const notifiedParticipants = session.participants.filter(p => p.pushSubscription && p.pushSubscription.endpoint);
 
         const notificationPayload = JSON.stringify({
             title: "NexOra: VCF Ready! 🔥",
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
-            icon: "https://nexora-backend-qhhc.onrender.com/assets/logo.png", 
-            data: { url: `https://nexora-vcf.vercel.app/join.html?id=${sessionId}` }
+            icon: "https://nexora.org.ng/assets/logo.png", 
+            data: { 
+                // ✅ Updated to your real domain
+                url: `https://nexora.org.ng/join.html?id=${sessionId}` 
+            }
         });
 
         notifiedParticipants.forEach(p => {
@@ -150,7 +152,7 @@ async function endSession(sessionId, io) {
                 .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
         });
 
-        console.log(`[NexOra Engine] Session ${sessionId} finalized. Sent ${notifiedParticipants.length} notifications.`);
+        console.log(`[NexOra Engine] Session ${sessionId} finalized. Notified ${notifiedParticipants.length} users.`);
     } catch (err) {
         console.error("Error ending session:", err);
     }
@@ -213,7 +215,13 @@ export const getSessionDetails = async (req, res) => {
         }
 
         const count = await Participant.countDocuments({ sessionId: req.params.sessionId });
-        res.status(200).json({ success: true, data: { title: session.name, status, participantCount: count, expiresAt: session.expiresAt, completedAt: session.completedAt } });
+        res.status(200).json({ success: true, data: { 
+            title: session.name, 
+            status, 
+            participantCount: count, 
+            expiresAt: session.expiresAt, 
+            completedAt: session.completedAt 
+        } });
     } catch (error) {
         res.status(500).json({ success: false });
     }
