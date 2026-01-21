@@ -4,8 +4,14 @@ const SessionSchema = new mongoose.Schema({
     sessionId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     duration: { type: Number, required: true },
-    status: { type: String, enum: ['active', 'completed'], default: 'active' },
+    status: { 
+        type: String, 
+        enum: ['active', 'completed', 'expired'], 
+        default: 'active' 
+    },
     expiresAt: { type: Date, required: true },
+    // 🔥 New field: Tracks when the pool moved from active to completed
+    completedAt: { type: Date }, 
     creator: { type: String, default: 'admin' },
     createdAt: { type: Date, default: Date.now }
 });
