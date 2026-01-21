@@ -19,8 +19,8 @@ router.post('/create', vcfController.createSession);
 // Get all active sessions (Used by Dashboard to show running pools)
 router.get('/active-sessions', async (req, res) => {
     try {
-        // Only fetch sessions that are currently 'active'
-        const active = await Session.find({ status: 'active' }).sort({ createdAt: -1 });
+        // Fetch sessions that are 'active' OR 'completed' (for the 48h expiration view)
+        const active = await Session.find({ status: { $in: ['active', 'completed'] } }).sort({ createdAt: -1 });
         res.json(active);
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -40,6 +40,10 @@ router.get('/session/:sessionId', vcfController.getSessionDetails);
 
 // Participant joins the pool (Validates status and prevents duplicates)
 router.post('/join', vcfController.joinSession);
+
+// 🔔 NEW: Save Push Subscription for Notifications
+// This allows participants to receive an alert when the VCF is ready
+router.post('/subscribe', vcfController.subscribeToNotifications);
 
 
 /**
