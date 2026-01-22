@@ -20,6 +20,9 @@ webpush.setVapidDetails(
 export const createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
+        // Ensure user is logged in to assign ownership
+        if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
         const sessionId = uuidv4().substring(0, 8); 
         const expiresAt = new Date(Date.now() + duration * 60000);
 
@@ -29,7 +32,7 @@ export const createSession = async (req, res) => {
             duration,
             expiresAt,
             status: 'active',
-            creator: req.user ? req.user.id : 'admin' 
+            creator: req.user.id // Strictly tied to the logged-in user
         });
 
         await newSession.save();
@@ -47,7 +50,7 @@ export const createSession = async (req, res) => {
 };
 
 /**
- * 2. Join a VCF Session (Syncs with Session Model Array)
+ * 2. Join a VCF Session (Public endpoint for participants)
  */
 export const joinSession = async (req, res) => {
     try {
@@ -57,11 +60,9 @@ export const joinSession = async (req, res) => {
         const session = await Session.findOne({ sessionId, status: 'active' });
         if (!session) return res.status(404).json({ success: false, message: "Pool closed." });
 
-        // Check separate collection for duplicates
         const existing = await Participant.findOne({ sessionId, phone: cleanPhone });
         if (existing) return res.status(400).json({ success: false, message: "Already in pool!" });
 
-        // Save to Participant Collection
         const participant = new Participant({
             sessionId,
             name: name.trim(),
@@ -69,7 +70,6 @@ export const joinSession = async (req, res) => {
         });
         await participant.save();
 
-        // 🔥 Add to Session internal participants array for Notifications
         session.participants.push({
             name: name.trim(),
             phone: cleanPhone,
@@ -90,19 +90,17 @@ export const joinSession = async (req, res) => {
 };
 
 /**
- * 3. Save Push Subscription (Updated to sync with Session)
+ * 3. Save Push Subscription
  */
 export const subscribeToNotifications = async (req, res) => {
     try {
         const { sessionId, phone, subscription } = req.body;
         
-        // Update the separate Participant record
         await Participant.findOneAndUpdate(
             { sessionId, phone },
             { pushSubscription: subscription }
         );
 
-        // Update the nested participant inside the Session record
         const session = await Session.findOne({ sessionId });
         if (session) {
             const pIndex = session.participants.findIndex(p => p.phone === phone);
@@ -119,11 +117,10 @@ export const subscribeToNotifications = async (req, res) => {
 };
 
 /**
- * 4. End Session & Send Notifications (Updated for nexora.org.ng)
+ * 4. End Session & Send Notifications
  */
 async function endSession(sessionId, io) {
     try {
-        // 🔥 Count participants BEFORE closing so the number is locked in the DB
         const finalCount = await Participant.countDocuments({ sessionId });
 
         const session = await Session.findOneAndUpdate(
@@ -131,31 +128,27 @@ async function endSession(sessionId, io) {
             { 
                 status: 'completed', 
                 completedAt: new Date(),
-                participantCount: finalCount // Saves the final number so it never returns to 0
+                participantCount: finalCount 
             },
             { new: true }
         );
         
         if (!session) return;
 
-        // 🚀 Socket Alert
         io.to(sessionId).emit('sessionFinished', { sessionId, count: finalCount });
-
-        // 🔔 WEB PUSH ALERT
-        const notifiedParticipants = session.participants.filter(p => p.pushSubscription && p.pushSubscription.endpoint);
 
         const notificationPayload = JSON.stringify({
             title: "NexOra: VCF Ready! 🔥",
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
             icon: "https://nexora.org.ng/asset/logo.jpg", 
-            data: { 
-                url: `https://nexora.org.ng/join.html?id=${sessionId}` 
-            }
+            data: { url: `https://nexora.org.ng/join.html?id=${sessionId}` }
         });
 
-        notifiedParticipants.forEach(p => {
-            webpush.sendNotification(p.pushSubscription, notificationPayload)
-                .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
+        session.participants.forEach(p => {
+            if (p.pushSubscription && p.pushSubscription.endpoint) {
+                webpush.sendNotification(p.pushSubscription, notificationPayload)
+                    .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
+            }
         });
 
         console.log(`[NexOra Engine] Session ${sessionId} finalized with ${finalCount} users.`);
@@ -199,10 +192,14 @@ export const downloadVcf = async (req, res) => {
 };
 
 /**
- * 6. View List, Details & Active Sessions
+ * 6. View List (Filtered by Owner)
  */
 export const viewLiveList = async (req, res) => {
     try {
+        // First verify the session belongs to the requester
+        const session = await Session.findOne({ sessionId: req.params.sessionId, creator: req.user.id });
+        if (!session) return res.status(403).json({ success: false, message: "Access denied." });
+
         const participants = await Participant.find({ sessionId: req.params.sessionId }).sort({ joinedAt: -1 });
         res.status(200).json(participants);
     } catch (error) {
@@ -210,10 +207,18 @@ export const viewLiveList = async (req, res) => {
     }
 };
 
+/**
+ * 7. Get Session Details (Filtered by Owner)
+ */
 export const getSessionDetails = async (req, res) => {
     try {
-        const session = await Session.findOne({ sessionId: req.params.sessionId });
-        if (!session) return res.status(404).json({ success: false });
+        // Only return details if the session belongs to the logged-in user
+        const session = await Session.findOne({ 
+            sessionId: req.params.sessionId, 
+            creator: req.user.id 
+        });
+
+        if (!session) return res.status(404).json({ success: false, message: "Session not found or unauthorized." });
 
         let status = session.status;
         if (session.completedAt && (new Date() - new Date(session.completedAt)) / 3600000 > 48) {
@@ -233,15 +238,19 @@ export const getSessionDetails = async (req, res) => {
     }
 };
 
-// 🔥 NEW: This function ensures the Dashboard gets the REAL count for every card
+/**
+ * 8. Get Active Sessions (Filtered by Owner - Dashboard View)
+ */
 export const getActiveSessions = async (req, res) => {
     try {
+        if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        // Only fetch sessions created by this specific user ID
         const sessions = await Session.find({ 
-            creator: req.user ? req.user.id : 'admin' 
+            creator: req.user.id 
         }).sort({ createdAt: -1 }).limit(5);
 
         const sessionsWithCounts = await Promise.all(sessions.map(async (session) => {
-            // Count from the Participants collection for 100% accuracy
             const count = await Participant.countDocuments({ sessionId: session.sessionId });
             return {
                 ...session._doc,
