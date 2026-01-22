@@ -123,16 +123,23 @@ export const subscribeToNotifications = async (req, res) => {
  */
 async function endSession(sessionId, io) {
     try {
+        // 🔥 FIX: Count participants BEFORE closing so the number is locked in the DB
+        const finalCount = await Participant.countDocuments({ sessionId });
+
         const session = await Session.findOneAndUpdate(
             { sessionId }, 
-            { status: 'completed', completedAt: new Date() },
+            { 
+                status: 'completed', 
+                completedAt: new Date(),
+                participantCount: finalCount // Saves the final number so it never returns to 0
+            },
             { new: true }
         );
         
         if (!session) return;
 
         // 🚀 Socket Alert
-        io.to(sessionId).emit('sessionFinished', { sessionId });
+        io.to(sessionId).emit('sessionFinished', { sessionId, count: finalCount });
 
         // 🔔 WEB PUSH ALERT
         const notifiedParticipants = session.participants.filter(p => p.pushSubscription && p.pushSubscription.endpoint);
@@ -142,7 +149,6 @@ async function endSession(sessionId, io) {
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
             icon: "https://nexora.org.ng/asset/logo.jpg", 
             data: { 
-                // ✅ Updated to your real domain
                 url: `https://nexora.org.ng/join.html?id=${sessionId}` 
             }
         });
@@ -152,7 +158,7 @@ async function endSession(sessionId, io) {
                 .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
         });
 
-        console.log(`[NexOra Engine] Session ${sessionId} finalized. Notified ${notifiedParticipants.length} users.`);
+        console.log(`[NexOra Engine] Session ${sessionId} finalized with ${finalCount} users.`);
     } catch (err) {
         console.error("Error ending session:", err);
     }
