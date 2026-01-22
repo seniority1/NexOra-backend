@@ -16,11 +16,13 @@ webpush.setVapidDetails(
 
 /**
  * 1. Initialize a New VCF Session
+ * Tied strictly to req.user.id from your Auth middleware
  */
 export const createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
-        // Ensure user is logged in to assign ownership
+        
+        // Safety check: ensure the protect middleware has passed user data
         if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
         const sessionId = uuidv4().substring(0, 8); 
@@ -32,7 +34,7 @@ export const createSession = async (req, res) => {
             duration,
             expiresAt,
             status: 'active',
-            creator: req.user.id // Strictly tied to the logged-in user
+            creator: req.user.id // Correctly uses the ID from your AuthController logic
         });
 
         await newSession.save();
@@ -196,7 +198,7 @@ export const downloadVcf = async (req, res) => {
  */
 export const viewLiveList = async (req, res) => {
     try {
-        // First verify the session belongs to the requester
+        // Isolation check: must match req.user.id
         const session = await Session.findOne({ sessionId: req.params.sessionId, creator: req.user.id });
         if (!session) return res.status(403).json({ success: false, message: "Access denied." });
 
@@ -208,17 +210,14 @@ export const viewLiveList = async (req, res) => {
 };
 
 /**
- * 7. Get Session Details (Filtered by Owner)
+ * 7. Get Session Details (Public/Participant View)
+ * Note: Removed the 'creator' filter here so participants can actually view the session info.
  */
 export const getSessionDetails = async (req, res) => {
     try {
-        // Only return details if the session belongs to the logged-in user
-        const session = await Session.findOne({ 
-            sessionId: req.params.sessionId, 
-            creator: req.user.id 
-        });
+        const session = await Session.findOne({ sessionId: req.params.sessionId });
 
-        if (!session) return res.status(404).json({ success: false, message: "Session not found or unauthorized." });
+        if (!session) return res.status(404).json({ success: false, message: "Session not found." });
 
         let status = session.status;
         if (session.completedAt && (new Date() - new Date(session.completedAt)) / 3600000 > 48) {
@@ -245,7 +244,7 @@ export const getActiveSessions = async (req, res) => {
     try {
         if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        // Only fetch sessions created by this specific user ID
+        // Isolation check: only fetch sessions created by THIS specific user ID
         const sessions = await Session.find({ 
             creator: req.user.id 
         }).sort({ createdAt: -1 }).limit(5);
