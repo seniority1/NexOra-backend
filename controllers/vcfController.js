@@ -123,7 +123,7 @@ export const subscribeToNotifications = async (req, res) => {
  */
 async function endSession(sessionId, io) {
     try {
-        // 🔥 FIX: Count participants BEFORE closing so the number is locked in the DB
+        // 🔥 Count participants BEFORE closing so the number is locked in the DB
         const finalCount = await Participant.countDocuments({ sessionId });
 
         const session = await Session.findOneAndUpdate(
@@ -199,7 +199,7 @@ export const downloadVcf = async (req, res) => {
 };
 
 /**
- * 6. View List & Get Details
+ * 6. View List, Details & Active Sessions
  */
 export const viewLiveList = async (req, res) => {
     try {
@@ -230,5 +230,27 @@ export const getSessionDetails = async (req, res) => {
         } });
     } catch (error) {
         res.status(500).json({ success: false });
+    }
+};
+
+// 🔥 NEW: This function ensures the Dashboard gets the REAL count for every card
+export const getActiveSessions = async (req, res) => {
+    try {
+        const sessions = await Session.find({ 
+            creator: req.user ? req.user.id : 'admin' 
+        }).sort({ createdAt: -1 }).limit(5);
+
+        const sessionsWithCounts = await Promise.all(sessions.map(async (session) => {
+            // Count from the Participants collection for 100% accuracy
+            const count = await Participant.countDocuments({ sessionId: session.sessionId });
+            return {
+                ...session._doc,
+                participantCount: count 
+            };
+        }));
+
+        res.status(200).json(sessionsWithCounts);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };
