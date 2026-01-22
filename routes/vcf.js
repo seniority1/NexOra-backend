@@ -4,52 +4,40 @@ const router = express.Router();
 // ✅ ESM Import for the controller
 import * as vcfController from '../controllers/vcfController.js'; 
 
-// ✅ Importing Models (Used for the dashboard-specific route below)
+// ✅ Importing Models (Only if needed for other custom logic)
 import Session from '../models/Session.js';
 import Participant from '../models/Participants.js';
 
 /**
  * 1. BOSS ROUTES (Command Center)
- * These manage the lifecycle and visibility of the pools.
  */
 
-// Create a new session (Initializes the pool and the auto-end timer)
+// Create a new session
 router.post('/create', vcfController.createSession);
 
-// Get all active sessions (Used by Dashboard to show running pools)
-router.get('/active-sessions', async (req, res) => {
-    try {
-        // Fetch sessions that are 'active' OR 'completed' (for the 48h expiration view)
-        const active = await Session.find({ status: { $in: ['active', 'completed'] } }).sort({ createdAt: -1 });
-        res.json(active);
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
+// 🔥 FIXED: Now points to the Controller function that calculates the live participant count
+router.get('/active-sessions', vcfController.getActiveSessions);
 
-// View participant list for a specific session (Requires Boss authorization in controller)
+// View participant list
 router.get('/list/:sessionId', vcfController.viewLiveList);
 
 
 /**
- * 2. PARTICIPANT ROUTES (Join Page Interface)
+ * 2. PARTICIPANT ROUTES
  */
 
-// Fetches title, status, and expiry (Now returns 'expired' status if past 48h completion)
+// Fetches title, status, and expiry
 router.get('/session/:sessionId', vcfController.getSessionDetails);
 
-// Participant joins the pool (Validates status and prevents duplicates)
+// Participant joins the pool
 router.post('/join', vcfController.joinSession);
 
-// 🔔 NEW: Save Push Subscription for Notifications
-// This allows participants to receive an alert when the VCF is ready
+// Save Push Subscription
 router.post('/subscribe', vcfController.subscribeToNotifications);
 
 
 /**
  * 3. SECURE DOWNLOAD ROUTE
- * Pointing to the updated controller that checks the 48-hour download window.
- * Access: /api/vcf/download/:sessionId?phone=+dialcodeNumber
  */
 router.get('/download/:sessionId', vcfController.downloadVcf);
 
