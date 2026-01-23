@@ -1,6 +1,3 @@
-Update it here correctly, completely without skipping or breaking any code 
-
-
 import Session from '../models/Session.js';
 import Participant from '../models/Participants.js';
 import { v4 as uuidv4 } from 'uuid';
