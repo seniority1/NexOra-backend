@@ -15,8 +15,6 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      // ✅ FIX: Removed default: null. 
-      // This allows the sparse index to ignore empty phone numbers during registration.
     },
     password: {
       type: String,
@@ -48,12 +46,10 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // 🔥 NEW: Specifically for the Admin User Table "Time Ago" logic
     lastLoginAt: {
       type: Date,
       default: null,
     },
-    // 🔔 Flag to prevent duplicate "0 coins" notifications
     notifiedExpiry: {
       type: Boolean,
       default: false,
@@ -103,6 +99,36 @@ const userSchema = new mongoose.Schema(
         expiresAt: { type: Date }, 
       },
     ],
+    /* 🔥 INTEGRATED VCF ENGINE SESSIONS 🔥 */
+    vcfSessions: [
+      {
+        sessionId: { type: String, required: true },
+        name: { type: String, required: true },
+        duration: { type: Number, required: true },
+        status: { 
+          type: String, 
+          enum: ['active', 'completed', 'expired'], 
+          default: 'active' 
+        },
+        createdAt: { type: Date, default: Date.now },
+        expiresAt: { type: Date, required: true },
+        completedAt: { type: Date }, 
+        
+        participants: [{
+          phone: { type: String, required: true },
+          name: { type: String, required: true },
+          joinedAt: { type: Date, default: Date.now },
+          pushSubscription: {
+            endpoint: { type: String },
+            expirationTime: { type: Number },
+            keys: {
+              p256dh: { type: String },
+              auth: { type: String }
+            }
+          }
+        }]
+      }
+    ],
     isBanned: {
       type: Boolean,
       default: false,
@@ -121,8 +147,10 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Define index explicitly to fix warnings and handle optional unique phone numbers
+// ✅ Performance & Unique Indexes
 userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
+// 🔥 Essential for finding pools via join links quickly
+userSchema.index({ "vcfSessions.sessionId": 1 });
 
 userSchema.pre("save", function (next) {
   if (!this.referralCode) {
