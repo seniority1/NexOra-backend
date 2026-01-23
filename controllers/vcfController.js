@@ -1,4 +1,8 @@
-import User from '../models/User.js'; // The "All-in-One" Source of Truth
+Update it here correctly, completely without skipping or breaking any code 
+
+
+import Session from '../models/Session.js';
+import Participant from '../models/Participants.js';
 import { v4 as uuidv4 } from 'uuid';
 import webpush from 'web-push';
 import dotenv from 'dotenv';
@@ -15,30 +19,28 @@ webpush.setVapidDetails(
 
 /**
  * 1. Initialize a New VCF Session
- * Saved inside the authenticated User's document
+ * Tied strictly to req.user.id from your Auth middleware
  */
 export const createSession = async (req, res) => {
     try {
         const { name, duration } = req.body;
+        
+        // Safety check: ensure the protect middleware has passed user data
         if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
         const sessionId = uuidv4().substring(0, 8); 
         const expiresAt = new Date(Date.now() + duration * 60000);
 
-        const newSession = {
+        const newSession = new Session({
             sessionId,
             name,
             duration,
             expiresAt,
             status: 'active',
-            createdAt: new Date(),
-            participants: []
-        };
-
-        // Push into User's vcfSessions array
-        await User.findByIdAndUpdate(req.user.id, {
-            $push: { vcfSessions: newSession }
+            creator: req.user.id // Correctly uses the ID from your AuthController logic
         });
+
+        await newSession.save();
 
         // Set automation to end session
         setTimeout(async () => {
@@ -53,37 +55,37 @@ export const createSession = async (req, res) => {
 };
 
 /**
- * 2. Join a VCF Session
- * Finds the User (Boss) who owns the session and adds participant
+ * 2. Join a VCF Session (Public endpoint for participants)
  */
 export const joinSession = async (req, res) => {
     try {
         const { sessionId, name, phone } = req.body;
         const cleanPhone = phone.trim().replace(/[\s\-]/g, '');
 
-        // Find the owner of this session
-        const owner = await User.findOne({ "vcfSessions.sessionId": sessionId });
-        if (!owner) return res.status(404).json({ success: false, message: "Pool not found." });
+        const session = await Session.findOne({ sessionId, status: 'active' });
+        if (!session) return res.status(404).json({ success: false, message: "Pool closed." });
 
-        const session = owner.vcfSessions.find(s => s.sessionId === sessionId);
-        if (session.status !== 'active') return res.status(400).json({ success: false, message: "Pool closed." });
-
-        // Check if phone already exists in this specific session
-        const existing = session.participants.find(p => p.phone === cleanPhone);
+        const existing = await Participant.findOne({ sessionId, phone: cleanPhone });
         if (existing) return res.status(400).json({ success: false, message: "Already in pool!" });
 
-        // Push new participant to the nested array
+        const participant = new Participant({
+            sessionId,
+            name: name.trim(),
+            phone: cleanPhone
+        });
+        await participant.save();
+
         session.participants.push({
             name: name.trim(),
             phone: cleanPhone,
             joinedAt: new Date()
         });
-
-        await owner.save();
+        await session.save();
 
         const io = req.app.get('socketio');
         if (io) {
-            io.to(sessionId).emit('gainerUpdate', { sessionId, count: session.participants.length });
+            const count = await Participant.countDocuments({ sessionId });
+            io.to(sessionId).emit('gainerUpdate', { sessionId, count });
         }
 
         res.status(200).json({ success: true, message: "Joined successfully!" });
@@ -93,21 +95,24 @@ export const joinSession = async (req, res) => {
 };
 
 /**
- * 3. Save Push Subscription (Nested)
+ * 3. Save Push Subscription
  */
 export const subscribeToNotifications = async (req, res) => {
     try {
         const { sessionId, phone, subscription } = req.body;
         
-        const owner = await User.findOne({ "vcfSessions.sessionId": sessionId });
-        if (!owner) return res.status(404).json({ success: false });
+        await Participant.findOneAndUpdate(
+            { sessionId, phone },
+            { pushSubscription: subscription }
+        );
 
-        const session = owner.vcfSessions.find(s => s.sessionId === sessionId);
-        const participant = session.participants.find(p => p.phone === phone);
-        
-        if (participant) {
-            participant.pushSubscription = subscription;
-            await owner.save();
+        const session = await Session.findOne({ sessionId });
+        if (session) {
+            const pIndex = session.participants.findIndex(p => p.phone === phone);
+            if (pIndex !== -1) {
+                session.participants[pIndex].pushSubscription = subscription;
+                await session.save();
+            }
         }
 
         res.status(200).json({ success: true, message: "Notifications enabled" });
@@ -117,66 +122,70 @@ export const subscribeToNotifications = async (req, res) => {
 };
 
 /**
- * 4. End Session Logic
+ * 4. End Session & Send Notifications
  */
 async function endSession(sessionId, io) {
     try {
-        const owner = await User.findOne({ "vcfSessions.sessionId": sessionId });
-        if (!owner) return;
+        const finalCount = await Participant.countDocuments({ sessionId });
 
-        const session = owner.vcfSessions.find(s => s.sessionId === sessionId);
-        if (session.status !== 'active') return;
+        const session = await Session.findOneAndUpdate(
+            { sessionId }, 
+            { 
+                status: 'completed', 
+                completedAt: new Date(),
+                participantCount: finalCount 
+            },
+            { new: true }
+        );
+        
+        if (!session) return;
 
-        session.status = 'completed';
-        session.completedAt = new Date();
-        await owner.save();
-
-        io.to(sessionId).emit('sessionFinished', { sessionId, count: session.participants.length });
+        io.to(sessionId).emit('sessionFinished', { sessionId, count: finalCount });
 
         const notificationPayload = JSON.stringify({
             title: "NexOra: VCF Ready! 🔥",
             body: `The pool "${session.name}" is finished. Download your contacts now!`,
             icon: "https://nexora.org.ng/asset/logo.jpg", 
-            data: { url: `https://nexora.org.ng/vcf.html?id=${sessionId}` }
+            data: { url: `https://nexora.org.ng/join.html?id=${sessionId}` }
         });
 
         session.participants.forEach(p => {
             if (p.pushSubscription && p.pushSubscription.endpoint) {
                 webpush.sendNotification(p.pushSubscription, notificationPayload)
-                    .catch(err => console.error(`Push failed:`, err.statusCode));
+                    .catch(err => console.error(`Push failed for ${p.phone}:`, err.statusCode));
             }
         });
+
+        console.log(`[NexOra Engine] Session ${sessionId} finalized with ${finalCount} users.`);
     } catch (err) {
         console.error("Error ending session:", err);
     }
 }
 
 /**
- * 5. Download VCF (Generates from Nested Data)
+ * 5. Download VCF
  */
 export const downloadVcf = async (req, res) => {
     try {
         const { sessionId } = req.params;
         const { phone } = req.query; 
 
-        const owner = await User.findOne({ "vcfSessions.sessionId": sessionId });
-        if (!owner) return res.status(404).send("Session not found.");
+        const session = await Session.findOne({ sessionId });
+        if (!session) return res.status(404).send("Session not found.");
 
-        const session = owner.vcfSessions.find(s => s.sessionId === sessionId);
-        
-        // Expiry check (48h)
         if (session.completedAt) {
             const diff = (new Date() - new Date(session.completedAt)) / (1000 * 60 * 60);
-            if (diff > 48) return res.status(410).send("Link Expired.");
+            if (diff > 48) return res.status(410).send("Link Expired (48h limit).");
         }
 
         const cleanPhone = phone.trim().replace(/[\s\-]/g, '');
-        const isParticipant = session.participants.some(p => p.phone === cleanPhone);
-        if (!isParticipant) return res.status(403).send("Unauthorized.");
+        const isParticipant = await Participant.findOne({ sessionId, phone: cleanPhone });
+        if (!isParticipant) return res.status(403).send("Number not registered.");
 
+        const contacts = await Participant.find({ sessionId });
         let vcf = "";
-        session.participants.forEach(p => {
-            vcf += `BEGIN:VCARD\nVERSION:3.0\nFN:${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
+        contacts.forEach(p => {
+            vcf += `BEGIN:VCARD\nVERSION:3.0\nFN: ${p.name}\nTEL;TYPE=CELL:${p.phone}\nEND:VCARD\n`;
         });
 
         res.setHeader('Content-Type', 'text/vcard');
@@ -188,34 +197,41 @@ export const downloadVcf = async (req, res) => {
 };
 
 /**
- * 6. View List (Owner Only)
+ * 6. View List (Filtered by Owner)
  */
 export const viewLiveList = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).lean();
-        const session = user.vcfSessions.find(s => s.sessionId === req.params.sessionId);
-        
+        // Isolation check: must match req.user.id
+        const session = await Session.findOne({ sessionId: req.params.sessionId, creator: req.user.id });
         if (!session) return res.status(403).json({ success: false, message: "Access denied." });
-        res.status(200).json(session.participants.reverse());
+
+        const participants = await Participant.find({ sessionId: req.params.sessionId }).sort({ joinedAt: -1 });
+        res.status(200).json(participants);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
 /**
- * 7. Get Session Details (Public)
+ * 7. Get Session Details (Public/Participant View)
+ * Note: Removed the 'creator' filter here so participants can actually view the session info.
  */
 export const getSessionDetails = async (req, res) => {
     try {
-        const owner = await User.findOne({ "vcfSessions.sessionId": req.params.sessionId }).lean();
-        if (!owner) return res.status(404).json({ success: false });
+        const session = await Session.findOne({ sessionId: req.params.sessionId });
 
-        const session = owner.vcfSessions.find(s => s.sessionId === req.params.sessionId);
+        if (!session) return res.status(404).json({ success: false, message: "Session not found." });
 
+        let status = session.status;
+        if (session.completedAt && (new Date() - new Date(session.completedAt)) / 3600000 > 48) {
+            status = 'expired';
+        }
+
+        const count = await Participant.countDocuments({ sessionId: req.params.sessionId });
         res.status(200).json({ success: true, data: { 
             title: session.name, 
-            status: session.status, 
-            participantCount: session.participants ? session.participants.length : 0, 
+            status, 
+            participantCount: count, 
             expiresAt: session.expiresAt, 
             completedAt: session.completedAt 
         } });
@@ -225,30 +241,27 @@ export const getSessionDetails = async (req, res) => {
 };
 
 /**
- * 8. Get Active Sessions (Dashboard View)
- * Updated with .lean() and robust array mapping to fix Frontend rendering.
+ * 8. Get Active Sessions (Filtered by Owner - Dashboard View)
  */
 export const getActiveSessions = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('vcfSessions').lean();
-        
-        if (!user || !user.vcfSessions) {
-            return res.status(200).json([]);
-        }
+        if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        // Return latest 5 sessions with participant counts
-        // Using raw JS object properties due to .lean()
-        const formattedSessions = user.vcfSessions
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 5)
-            .map(s => ({
-                ...s,
-                participantCount: s.participants ? s.participants.length : 0
-            }));
+        // Isolation check: only fetch sessions created by THIS specific user ID
+        const sessions = await Session.find({ 
+            creator: req.user.id 
+        }).sort({ createdAt: -1 }).limit(5);
 
-        res.status(200).json(formattedSessions);
+        const sessionsWithCounts = await Promise.all(sessions.map(async (session) => {
+            const count = await Participant.countDocuments({ sessionId: session.sessionId });
+            return {
+                ...session._doc,
+                participantCount: count 
+            };
+        }));
+
+        res.status(200).json(sessionsWithCounts);
     } catch (error) {
-        console.error("Dashboard Fetch Error:", error);
-        res.status(500).json([]);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
