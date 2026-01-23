@@ -12,4 +12,3 @@ ParticipantSchema.index({ sessionId: 1 });
 // ✅ Change module.exports to export default
 export default mongoose.model('Participant', ParticipantSchema);
 
-In the updated user model ?
