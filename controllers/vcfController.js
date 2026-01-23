@@ -192,7 +192,7 @@ export const downloadVcf = async (req, res) => {
  */
 export const viewLiveList = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).lean();
         const session = user.vcfSessions.find(s => s.sessionId === req.params.sessionId);
         
         if (!session) return res.status(403).json({ success: false, message: "Access denied." });
@@ -207,7 +207,7 @@ export const viewLiveList = async (req, res) => {
  */
 export const getSessionDetails = async (req, res) => {
     try {
-        const owner = await User.findOne({ "vcfSessions.sessionId": req.params.sessionId });
+        const owner = await User.findOne({ "vcfSessions.sessionId": req.params.sessionId }).lean();
         if (!owner) return res.status(404).json({ success: false });
 
         const session = owner.vcfSessions.find(s => s.sessionId === req.params.sessionId);
@@ -215,7 +215,7 @@ export const getSessionDetails = async (req, res) => {
         res.status(200).json({ success: true, data: { 
             title: session.name, 
             status: session.status, 
-            participantCount: session.participants.length, 
+            participantCount: session.participants ? session.participants.length : 0, 
             expiresAt: session.expiresAt, 
             completedAt: session.completedAt 
         } });
@@ -226,23 +226,29 @@ export const getSessionDetails = async (req, res) => {
 
 /**
  * 8. Get Active Sessions (Dashboard View)
+ * Updated with .lean() and robust array mapping to fix Frontend rendering.
  */
 export const getActiveSessions = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('vcfSessions');
-        if (!user) return res.status(404).json({ success: false });
+        const user = await User.findById(req.user.id).select('vcfSessions').lean();
+        
+        if (!user || !user.vcfSessions) {
+            return res.status(200).json([]);
+        }
 
         // Return latest 5 sessions with participant counts
+        // Using raw JS object properties due to .lean()
         const formattedSessions = user.vcfSessions
-            .sort((a, b) => b.createdAt - a.createdAt)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 5)
             .map(s => ({
-                ...s._doc,
-                participantCount: s.participants.length
+                ...s,
+                participantCount: s.participants ? s.participants.length : 0
             }));
 
         res.status(200).json(formattedSessions);
     } catch (error) {
-        res.status(500).json({ success: false });
+        console.error("Dashboard Fetch Error:", error);
+        res.status(500).json([]);
     }
 };
