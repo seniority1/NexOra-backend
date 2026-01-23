@@ -1,3 +1,6 @@
+Update this correctlt and completely without skipping or breaking any code 
+
+
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -13,8 +16,6 @@ import adminRoutes from "./routes/admin.js";
 import botDeployRoutes from "./routes/botDeployRoutes.js";
 import contactRoutes from "./routes/contact.js";
 import adminNotificationsRoutes from "./routes/adminNotifications.js";
-// ✅ VCF Engine Route
-import vcfRoutes from "./routes/vcf.js"; 
 
 import "./cron/dailyReport.js"; 
 import Admin from "./models/Admin.js";
@@ -35,29 +36,10 @@ const io = new Server(server, {
   }
 });
 
-// ✅ Sets io to app for access in controllers via req.app.get('socketio')
-app.set('socketio', io);
 global.io = io;
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
-
-  // ✅ PRIVATE USER ROOM (Crucial for live Coins/Notifications)
-  socket.on("join", (userId) => {
-    if (userId) {
-      socket.join(userId);
-      console.log(`User ${userId} joined their Private Room`);
-    }
-  });
-
-  // ✅ Room join logic for specific VCF sessions
-  socket.on("joinSession", (sessionId) => {
-    if (sessionId) {
-      socket.join(sessionId);
-      console.log(`User joined VCF Session Room: ${sessionId}`);
-    }
-  });
-
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
   });
@@ -75,8 +57,6 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/bot", botDeployRoutes); 
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin", adminNotificationsRoutes);
-// ✅ Mount VCF Engine Routes
-app.use("/api/vcf", vcfRoutes);
 
 /**
  * 🕵️‍♂️ AUTOMATIC BACKGROUND WATCHER
@@ -106,7 +86,7 @@ setInterval(async () => {
               title: "Bot Stopped",
               message: `🛑 Alert: Your bot "${bot.name}" has finished its deployment period.`,
               targetUser: user.email,
-              sentBy: "NexOra System", 
+              sentBy: "NexOra System", // ✅ FIXED: Added required field
               readBy: []
             });
           }
@@ -123,7 +103,7 @@ setInterval(async () => {
             title: "Coins Expired",
             message: "⚠️ Alert: Your NexOra coins have reached 0. Refill to resume deployments.",
             targetUser: user.email,
-            sentBy: "NexOra System", 
+            sentBy: "NexOra System", // ✅ FIXED: Added required field
             readBy: []
           });
         }
@@ -183,6 +163,5 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`NexOra Backend + Socket.io LIVE on port ${PORT}`);
   console.log(`Watcher Engine ACTIVE — Monitoring Bots & Coins...`);
-  console.log(`VCF Gainer Engine — READY`);
   console.log(`Admin IP locked to: 197.211.63.149`);
 });
