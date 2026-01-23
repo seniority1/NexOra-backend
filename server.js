@@ -1,6 +1,3 @@
-Update this correctlt and completely without skipping or breaking any code 
-
-
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
