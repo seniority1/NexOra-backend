@@ -35,17 +35,27 @@ const io = new Server(server, {
   }
 });
 
-// ✅ Sets io to app for access in vcfController via req.app.get('socketio')
+// ✅ Sets io to app for access in controllers via req.app.get('socketio')
 app.set('socketio', io);
 global.io = io;
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
+  // ✅ PRIVATE USER ROOM (Crucial for live Coins/Notifications)
+  socket.on("join", (userId) => {
+    if (userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their Private Room`);
+    }
+  });
+
   // ✅ Room join logic for specific VCF sessions
   socket.on("joinSession", (sessionId) => {
-    socket.join(sessionId);
-    console.log(`User joined VCF Session Room: ${sessionId}`);
+    if (sessionId) {
+      socket.join(sessionId);
+      console.log(`User joined VCF Session Room: ${sessionId}`);
+    }
   });
 
   socket.on("disconnect", () => {
