@@ -15,8 +15,7 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      // ✅ FIX: Removed default: null. 
-      // This allows the sparse index to ignore empty phone numbers during registration.
+      // Sparse index handles uniqueness for optional numbers
     },
     password: {
       type: String,
@@ -48,12 +47,12 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // 🔥 NEW: Specifically for the Admin User Table "Time Ago" logic
+    // Specifically for the Admin User Table "Time Ago" logic
     lastLoginAt: {
       type: Date,
       default: null,
     },
-    // 🔔 Flag to prevent duplicate "0 coins" notifications
+    // Flag to prevent duplicate "0 coins" notifications
     notifiedExpiry: {
       type: Boolean,
       default: false,
@@ -91,18 +90,7 @@ const userSchema = new mongoose.Schema(
         description: String,
       },
     ],
-    deployments: [
-      {
-        name: String,
-        status: {
-          type: String,
-          enum: ["active", "paused", "deleted", "expired"], 
-          default: "active",
-        },
-        createdAt: { type: Date, default: Date.now },
-        expiresAt: { type: Date }, 
-      },
-    ],
+    // 🗑️ STATIC ARRAY REMOVED: Clashed with Deployment.js collection
     isBanned: {
       type: Boolean,
       default: false,
@@ -118,11 +106,24 @@ const userSchema = new mongoose.Schema(
       default: "No reason provided",
     },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    // 🔥 ESSENTIAL: Allows frontend to see virtual 'activeBots'
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+  }
 );
 
-// ✅ Define index explicitly to fix warnings and handle optional unique phone numbers
+// ✅ Sparse index for unique phone numbers
 userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
+
+// 🔗 VIRTUAL LINK: Connects User to the Deployment Collection 
+// This fixes the "0/5" mismatch by reading real-time bot data
+userSchema.virtual('activeBots', {
+  ref: 'Deployment',      // Matches the model name in Deployment.js
+  localField: '_id',      // The User's ID
+  foreignField: 'user',   // The field in Deployment.js that stores User ID
+});
 
 userSchema.pre("save", function (next) {
   if (!this.referralCode) {
