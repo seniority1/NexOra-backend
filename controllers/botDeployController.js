@@ -28,8 +28,8 @@ export const getUserDeployments = async (req, res) => {
         phoneNumber: b.phoneNumber,
         status: b.status,
         expiryDate: b.expiryDate,
-        pairingCode: b.pairingCode || "Initializing...",
-        latency: b.latency || 0 // Added for the quality indicator
+        pairingCode: b.pairingCode || "", 
+        latency: b.latency || 0 
       }))
     });
   } catch (error) {
@@ -38,7 +38,7 @@ export const getUserDeployments = async (req, res) => {
 };
 
 /**
- * 2. DEPLOY BOT (Universal International Support)
+ * 2. DEPLOY BOT (Optimized for Instant Slot Display)
  */
 export const deployBotToVPS = async (req, res) => {
   try {
@@ -54,52 +54,44 @@ export const deployBotToVPS = async (req, res) => {
     const cost = COST_TABLE[days];
     if (user.coins < cost) return res.status(400).json({ success: false, message: "Insufficient coins." });
 
-    // 🌍 UNIVERSAL FIX: Remove spaces/dashes but KEEP the '+' if user provided it
-    // We no longer force "234" prefix.
     const formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, "");
 
     const alreadyDeployed = await Deployment.findOne({ phoneNumber: formattedPhone });
-    if (alreadyDeployed) return res.status(400).json({ success: false, message: "This number is already active in a slot." });
+    if (alreadyDeployed) return res.status(400).json({ success: false, message: "This number is already active." });
 
-    // Deduct coins
+    // 1. Deduct coins and Save User
     user.coins -= cost;
     await user.save();
 
-    // Create record in Database
-    try {
-        await Deployment.create({
-            user: user._id,
-            phoneNumber: formattedPhone,
-            days: Number(days),
-            pairingCode: "Warming up...", 
-            status: "initializing",
-            expiryDate: new Date(Date.now() + (days * 86400000)),
-        });
-    } catch (dbError) {
-        console.error("❌ MONGODB SAVE ERROR:", dbError.message);
-    }
+    // 2. Create record in Database FIRST (This ensures the slot exists for the frontend)
+    await Deployment.create({
+        user: user._id,
+        phoneNumber: formattedPhone,
+        days: Number(days),
+        pairingCode: "", 
+        status: "initializing",
+        expiryDate: new Date(Date.now() + (days * 86400000)),
+    });
 
-    // --- TRIGGER VPS HANDSHAKE ---
-    try {
-      await axios.post(`${FACTORY_URL}/deploy`, {
+    // 3. Respond to Frontend IMMEDIATELY so the slot appears
+    res.json({ 
+      success: true, 
+      message: "Engine started! Spawning slot..." 
+    });
+
+    // 4. Trigger VPS Handshake in the background (Doesn't make user wait)
+    axios.post(`${FACTORY_URL}/deploy`, {
         phoneNumber: formattedPhone,
         secret: SECRET_KEY
-      }, { timeout: 10000 }); 
-    } catch (vpsErr) {
-      console.log("⚠️ VPS handshake acknowledged in background.");
-    }
-
-    return res.json({ 
-      success: true, 
-      message: "Engine started! Your pairing code will appear on the dashboard shortly." 
+    }, { timeout: 15000 }).catch(err => {
+        console.log(`📡 VPS Handshake sent for ${formattedPhone}`);
     });
 
   } catch (error) {
     console.error("❌ CRITICAL DEPLOY ERROR:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal server error." 
-    });
+    if (!res.headersSent) {
+        return res.status(500).json({ success: false, message: "Internal server error." });
+    }
   }
 };
 
@@ -111,7 +103,8 @@ export const stopBot = async (req, res) => {
     const { phoneNumber } = req.body;
     const user = await User.findOne({ email: req.user.email });
 
-    await axios.post(`${FACTORY_URL}/stop`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
+    // Background call to VPS
+    axios.post(`${FACTORY_URL}/stop`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
 
     await Deployment.findOneAndUpdate(
       { user: user._id, phoneNumber },
@@ -130,9 +123,11 @@ export const stopBot = async (req, res) => {
 export const restartBot = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
-    await axios.post(`${FACTORY_URL}/deploy`, { phoneNumber, secret: SECRET_KEY }, { timeout: 8000 });
     
     await Deployment.findOneAndUpdate({ phoneNumber }, { status: "restarting" });
+
+    // Trigger VPS
+    axios.post(`${FACTORY_URL}/deploy`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
     
     res.json({ success: true, message: "Restart signal sent." });
   } catch (error) {
@@ -148,7 +143,8 @@ export const deleteBot = async (req, res) => {
     const { phoneNumber } = req.body;
     const user = await User.findOne({ email: req.user.email });
 
-    await axios.post(`${FACTORY_URL}/delete`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
+    // Signal VPS to wipe files
+    axios.post(`${FACTORY_URL}/delete`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
 
     await Deployment.findOneAndDelete({ user: user._id, phoneNumber });
 
@@ -160,60 +156,40 @@ export const deleteBot = async (req, res) => {
 
 /**
  * 8. RESET SESSION (Repair Connection)
- * Only wipes the physical VPS files, keeping the DB slot active.
  */
 export const resetSession = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
-    
-    // 1. Identify the user
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    // 2. Tell VPS to wipe ONLY the auth/session folder for this number
-    // We use a separate route so the VPS knows NOT to stop the bot forever
-    await axios.post(`${FACTORY_URL}/reset-session`, { 
-      phoneNumber, 
-      secret: SECRET_KEY 
-    });
+    // Tell VPS to wipe session files
+    axios.post(`${FACTORY_URL}/reset-session`, { phoneNumber, secret: SECRET_KEY }).catch(() => {});
 
-    // 3. Update the Database record
-    // We don't delete! We just clear the old code and set status to resetting
     await Deployment.findOneAndUpdate(
       { user: user._id, phoneNumber },
-      { 
-        status: "resetting", 
-        pairingCode: "Wiping session..." 
-      }
+      { status: "resetting", pairingCode: "" }
     );
 
-    res.json({ 
-      success: true, 
-      message: "Session files cleared. Please wait for a new pairing code." 
-    });
+    res.json({ success: true, message: "Repairing session files..." });
   } catch (error) {
-    console.error("RESET ERROR:", error.message);
     res.status(500).json({ success: false, message: "Failed to reset session." });
   }
 };
 
-
 /**
- * 6. WEBHOOK: Update Pairing Code (From VPS)
- * 🚀 Emits Socket signal for Real-time Dashboard update
+ * 6. WEBHOOK: Update Pairing Code
  */
 export const updateBotCode = async (req, res) => {
   const { phoneNumber, pairingCode, secret } = req.body;
   if (secret !== SECRET_KEY) return res.status(401).json({ success: false });
 
   try {
-    const updated = await Deployment.findOneAndUpdate(
+    await Deployment.findOneAndUpdate(
       { phoneNumber },
-      { pairingCode, status: "waiting_pairing" },
-      { new: true }
+      { pairingCode, status: "waiting_pairing" }
     );
 
-    // ⚡ SOCKET TRIGGER: This tells the dashboard to show the code NOW
     if (global.io) {
         global.io.emit(`pairing-code-${phoneNumber}`, { code: pairingCode });
     }
@@ -225,7 +201,7 @@ export const updateBotCode = async (req, res) => {
 };
 
 /**
- * 7. WEBHOOK: Update Status & Quality (From VPS)
+ * 7. WEBHOOK: Update Status & Quality
  */
 export const updateBotStatus = async (req, res) => {
   const { phoneNumber, status, latency, secret } = req.body;
@@ -237,7 +213,6 @@ export const updateBotStatus = async (req, res) => {
 
     await Deployment.findOneAndUpdate({ phoneNumber }, updateData);
 
-    // ⚡ SOCKET TRIGGER: Update status icon and latency meter instantly
     if (global.io) {
         global.io.emit(`status-update-${phoneNumber}`, { status, latency });
     }
