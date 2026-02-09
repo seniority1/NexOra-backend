@@ -138,7 +138,7 @@ mongoose
         name: "Alphonsus Okoko",
         email: adminEmail,
         passwordHash: hash,
-        allowedIPs: ["197.211.63.149"], 
+        allowedIPs: [" 197.211.53.80"], 
         trustedDevices: [],
       }).save();
 
@@ -146,9 +146,9 @@ mongoose
     } else {
       await Admin.updateOne(
         { email: adminEmail },
-        { $addToSet: { allowedIPs: "197.211.63.149" } }
+        { $addToSet: { allowedIPs: " 197.211.53.80" } }
       );
-      console.log("Hard-coded IP 197.211.63.149 confirmed in whitelist");
+      console.log("Hard-coded IP  197.211.53.80 confirmed in whitelist");
     }
   })
   .catch((err) => {
